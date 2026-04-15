@@ -14,3 +14,5 @@ release/
 test/
 
 *.spec
+
+PROJECT_CONTEXT.md

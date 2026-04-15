@@ -88,17 +88,17 @@ def download_cover(client: HttpClient, metadata: MovieMetadata, folder: Path, fi
     return target
 
 
-def copy_video_files(entry: ScanEntry, folder: Path, code: str, on_log=None) -> list[Path]:
-    copied: list[Path] = []
+def move_video_files(entry: ScanEntry, folder: Path, code: str, on_log=None) -> list[Path]:
+    moved: list[Path] = []
     for index, source in enumerate(entry.files, start=1):
         suffix = source.suffix.lower()
         target_name = f"{code}{suffix}" if len(entry.files) == 1 else f"{code}-CD{index}{suffix}"
         target = folder / target_name
         if on_log:
-            on_log(f"[{entry.code}] 复制视频文件: {source} -> {target}")
-        shutil.copy2(source, target)
-        copied.append(target)
-    return copied
+            on_log(f"[{entry.code}] 移动视频文件: {source} -> {target}")
+        shutil.move(str(source), str(target))
+        moved.append(target)
+    return moved
 
 
 def download_preview_images(client: HttpClient, metadata: MovieMetadata, folder: Path, on_log=None) -> list[Path]:
@@ -133,7 +133,7 @@ def build_movie_folder(output_root: Path, metadata: MovieMetadata) -> Path:
 
 def save_result(client: HttpClient, output_root: Path, entry: ScanEntry, metadata: MovieMetadata, on_log=None) -> dict:
     folder = build_movie_folder(output_root, metadata)
-    copy_video_files(entry, folder, metadata.code, on_log)
+    move_video_files(entry, folder, metadata.code, on_log)
     if on_log:
         on_log(f"[{entry.code}] 写入 NFO: {folder / 'movie.nfo'}")
     write_nfo(metadata, folder)
