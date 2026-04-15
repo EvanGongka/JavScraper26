@@ -29,6 +29,34 @@ python3 app.py
 - 按顺序逐站刮削
 - 在浏览器界面中查看日志和逐条状态
 
+## 界面截图
+
+截图文件建议放在：
+
+```text
+docs/images/
+```
+
+当前 `README` 预留的截图文件名如下：
+
+- `docs/images/main-ui.png`
+- `docs/images/connectivity-dialog.png`
+- `docs/images/scrape-result.png`
+
+你截图完成后，只需要把对应图片放进去即可。如果文件名不同，把下面的路径一起改掉就行。
+
+### 主界面
+
+![主界面](docs/images/main-ui.png)
+
+### 连通性检测弹窗
+
+![连通性检测弹窗](docs/images/connectivity-dialog.png)
+
+### 刮削结果
+
+![刮削结果](docs/images/scrape-result.png)
+
 ## 输出结果
 
 当前输出结构已经调整为常见刮削整理工具的目录方式。
