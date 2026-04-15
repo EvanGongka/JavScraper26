@@ -1,0 +1,25 @@
+[project]
+name = "javscraper"
+version = "0.1.0"
+description = "Desktop JAV metadata scraper with GUI and ordered provider pipeline"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "GPL-3.0-or-later AND Anti-996 License"}
+classifiers = [
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+]
+dependencies = [
+  "requests>=2.32.0",
+  "lxml>=5.3.0",
+  "curl-cffi>=0.7.0",
+  "browser-cookie3>=0.20.1",
+  "fastapi>=0.115.0",
+  "uvicorn>=0.35.0",
+]
+
+[project.scripts]
+javscraper = "javscraper.gui:launch"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,7 @@
+requests>=2.32.0
+lxml>=5.3.0
+curl-cffi>=0.7.0
+browser-cookie3>=0.20.1
+fastapi>=0.115.0
+uvicorn>=0.35.0
+pyinstaller>=6.10.0
