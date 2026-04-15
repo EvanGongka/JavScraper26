@@ -1,0 +1,59 @@
+name: Build Windows Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build on Windows
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run Windows build script
+        shell: cmd
+        run: scripts\build_windows_exe.bat
+
+      - name: Prepare release bundle
+        shell: pwsh
+        run: |
+          $bundleDir = "release\javScraper26-windows"
+          $zipPath = "release\javScraper26-windows.zip"
+
+          if (Test-Path $bundleDir) {
+            Remove-Item $bundleDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $bundleDir | Out-Null
+
+          Copy-Item "dist\javScraper26" -Destination $bundleDir -Recurse
+          Copy-Item "LICENSE" -Destination $bundleDir
+          Copy-Item "README.md" -Destination $bundleDir
+
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+          Compress-Archive -Path "$bundleDir\*" -DestinationPath $zipPath
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: javScraper26-windows
+          path: |
+            release/javScraper26-windows/
+            release/javScraper26-windows.zip
+          if-no-files-found: error

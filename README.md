@@ -185,3 +185,21 @@ Windows 打包完成后，产物默认在：
 ```text
 dist\javScraper26\javScraper26.exe
 ```
+
+补充说明：
+
+- Windows 打包脚本会使用独立的虚拟环境目录：`.venv-windows-build`
+- 脚本在任一步失败时会直接退出，避免出现失败后仍显示构建成功的误导
+
+如果你当前主要在 macOS 上开发，也可以直接使用仓库内的 GitHub Actions 工作流自动构建 Windows 包：
+
+```text
+.github/workflows/build-windows.yml
+```
+
+这个工作流会在 GitHub 的 Windows runner 上：
+
+- 执行 `scripts\build_windows_exe.bat`
+- 生成目录版产物 `release\javScraper26-windows\`
+- 额外打包 `release\javScraper26-windows.zip`
+- 将构建结果上传为 Actions artifact
