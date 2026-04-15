@@ -1,0 +1,39 @@
+name: Build macOS Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    name: Build on macOS
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run macOS build script
+        shell: bash
+        run: bash scripts/build_macos_app.sh
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: javScraper26-macos
+          path: |
+            release/javScraper26-macos/
+            release/javScraper26-macos.zip
+          if-no-files-found: error

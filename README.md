@@ -203,3 +203,14 @@ dist\javScraper26\javScraper26.exe
 - 生成目录版产物 `release\javScraper26-windows\`
 - 额外打包 `release\javScraper26-windows.zip`
 - 将构建结果上传为 Actions artifact
+
+仓库内也提供了对应的 macOS 自动构建工作流：
+
+```text
+.github/workflows/build-macos.yml
+```
+
+它会在 GitHub 的 macOS runner 上执行 `scripts/build_macos_app.sh`，并上传：
+
+- `release/javScraper26-macos/`
+- `release/javScraper26-macos.zip`
