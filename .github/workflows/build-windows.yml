@@ -25,9 +25,54 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install dependencies for tests
+        shell: cmd
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit tests
+        shell: cmd
+        run: |
+          python -m unittest discover -s tests -p "test_*.py"
+
       - name: Run Windows build script
         shell: cmd
         run: scripts\build_windows_exe.bat
+
+      - name: Smoke test packaged app
+        shell: pwsh
+        env:
+          JAVSCRAPER_DISABLE_BROWSER: "1"
+          JAVSCRAPER_PORT: "8765"
+        run: |
+          $exePath = Resolve-Path "dist\javScraper26\javScraper26.exe"
+          $proc = Start-Process -FilePath $exePath -PassThru
+          try {
+            $healthy = $false
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Milliseconds 500
+              if ($proc.HasExited) {
+                throw "Packaged app exited early with code $($proc.ExitCode)."
+              }
+              try {
+                $response = Invoke-WebRequest -Uri "http://127.0.0.1:8765/" -UseBasicParsing -TimeoutSec 2
+                if ($response.StatusCode -eq 200) {
+                  $healthy = $true
+                  break
+                }
+              } catch {
+              }
+            }
+
+            if (-not $healthy) {
+              throw "Packaged app did not become healthy on http://127.0.0.1:8765/."
+            }
+          } finally {
+            if (-not $proc.HasExited) {
+              Stop-Process -Id $proc.Id -Force
+            }
+          }
 
       - name: Prepare release bundle
         shell: pwsh

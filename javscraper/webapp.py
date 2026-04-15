@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import socket
 import sys
 import threading
@@ -261,8 +262,34 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
+def _launch_port() -> int:
+    configured_port = os.getenv("JAVSCRAPER_PORT")
+    if configured_port is None:
+        return _free_port()
+    try:
+        port = int(configured_port)
+    except ValueError as exc:
+        raise ValueError("JAVSCRAPER_PORT must be an integer") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError("JAVSCRAPER_PORT must be between 1 and 65535")
+    return port
+
+
+def _should_open_browser() -> bool:
+    return os.getenv("JAVSCRAPER_DISABLE_BROWSER", "").lower() not in {"1", "true", "yes", "on"}
+
+
 def launch() -> None:
-    port = _free_port()
+    port = _launch_port()
     url = f"http://127.0.0.1:{port}"
-    threading.Timer(1.2, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    if _should_open_browser():
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+        access_log=False,
+        log_config=None,
+        use_colors=False,
+    )
