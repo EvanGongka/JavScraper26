@@ -1,5 +1,5 @@
 [project]
-name = "javscraper"
+name = "javScraper26"
 version = "0.1.0"
 description = "Desktop JAV metadata scraper with GUI and ordered provider pipeline"
 readme = "README.md"
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-javscraper = "javscraper.gui:launch"
+javscraper26 = "javscraper.webapp:launch"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

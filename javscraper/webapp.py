@@ -102,7 +102,7 @@ class ConnectivityRequest(BaseModel):
     proxy: Optional[Dict[str, Any]] = None
 
 
-app = FastAPI(title="JavScraper")
+app = FastAPI(title="javScraper26")
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 

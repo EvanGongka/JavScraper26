@@ -17,7 +17,7 @@ DEFAULT_SITES = ["JavBus", "JavDB", "AVMOO", "FreeJavBT", "JavBooks"]
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("JavScraper")
+        self.title("javScraper26")
         self.geometry("1220x760")
         self.minsize(1080, 680)
         self.configure(background="#f3f3f3")
@@ -124,7 +124,7 @@ class App(tk.Tk):
             return
         self.source_var.set(folder)
         if not self.output_var.get():
-            self.output_var.set(str(Path(folder) / "JavScraper-output"))
+            self.output_var.set(str(Path(folder) / "javScraper26-output"))
 
     def choose_output(self) -> None:
         folder = filedialog.askdirectory(title="选择结果输出目录")

@@ -125,7 +125,7 @@ async function pickDirectory(title, input) {
     });
     input.value = data.path;
     if (input === sourcePath && !outputPath.value) {
-      outputPath.value = `${data.path}/JavScraper-output`;
+      outputPath.value = `${data.path}/javScraper26-output`;
     }
   } catch (error) {
     window.alert(error.message);

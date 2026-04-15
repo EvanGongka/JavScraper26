@@ -1,4 +1,4 @@
-# JavScraper
+# javScraper26
 
 一个本地运行的 JAV 元数据刮削器，界面使用浏览器页面呈现，抓取核心仍然是 Python。
 
@@ -13,7 +13,7 @@
 ## 运行
 
 ```bash
-cd JavScraper
+cd javScraper26
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -108,7 +108,7 @@ FreeJavBT/
 - `GPL-3.0-or-later`
 - `Anti-996 License`
 
-项目根目录已包含完整的 [LICENSE](/Users/gongkeao/codes/my-school/JavScraper/LICENSE) 文件。
+项目根目录已包含完整的 `LICENSE` 文件。
 
 这样处理的目的，是让项目当前的实现方式、再分发方式和许可证约束保持一致，也避免后续改成更宽松协议时带来的不确定风险。
 
@@ -130,17 +130,17 @@ scripts/build_macos_app.sh
 默认产物路径：
 
 ```text
-dist/JavScraper.app
+dist/javScraper26.app
 ```
 
 补充说明：
 
 - `build/` 目录只是 PyInstaller 的中间构建目录，不要直接运行里面的可执行文件
-- 实际应运行 `dist/JavScraper.app`，或者目录版产物 `dist/JavScraper/JavScraper`
+- 实际应运行 `dist/javScraper26.app`，或者目录版产物 `dist/javScraper26/javScraper26`
 - 新版应用启动后，会在本机启动一个本地服务，并自动打开浏览器界面
 - 当前打包脚本会优先使用 `/usr/bin/python3`
 - 脚本会把 `webui/` 静态页面一起打进应用包
-- 另外还会生成一个目录版产物：`dist/JavScraper/`
+- 另外还会生成一个目录版产物：`dist/javScraper26/`
 
 ## 打包 Windows EXE
 
@@ -155,5 +155,5 @@ scripts\build_windows_exe.bat
 Windows 打包完成后，产物默认在：
 
 ```text
-dist\JavScraper\JavScraper.exe
+dist\javScraper26\javScraper26.exe
 ```

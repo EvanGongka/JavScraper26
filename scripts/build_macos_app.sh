@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-APP_NAME="JavScraper"
+APP_NAME="javScraper26"
 RELEASE_DIR="release/${APP_NAME}-macos"
 ZIP_NAME="${APP_NAME}-macos.zip"
 
