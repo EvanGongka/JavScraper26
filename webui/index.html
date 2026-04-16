@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>javScraper26</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260416b" />
   </head>
   <body>
     <div class="shell">
@@ -39,8 +39,14 @@
       <main class="workspace">
         <section class="card providers">
           <div class="section-head">
-            <h2>站点顺序</h2>
-            <span id="providerHint">勾选启用，JavDB 默认放最后且需要登录</span>
+            <div>
+              <h2>站点顺序</h2>
+              <span id="providerHint">勾选启用，JavDB 默认放最后且需要登录</span>
+            </div>
+            <div class="provider-bulk-actions">
+              <button id="selectAllProviders" type="button">全选</button>
+              <button id="clearAllProviders" type="button">全不选</button>
+            </div>
           </div>
           <ul id="providerList" class="provider-list"></ul>
         </section>
@@ -82,7 +88,7 @@
           <button id="closeConnectivityModal" class="ghost-button">关闭</button>
         </div>
         <p class="modal-tip">
-          每次刮削前都会先校验所有站点的连通性。如果有站点不通，可以填写代理，或者直接使用全局代理 / TUN 模式。
+          每次刮削前都会先校验当前勾选站点的连通性。如果有站点不通，可以填写代理，或者直接使用全局代理 / TUN 模式。
         </p>
         <div id="connectivitySummary" class="connectivity-summary"></div>
 
@@ -125,6 +131,6 @@
         </div>
       </div>
     </div>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20260416b"></script>
   </body>
   </html>

@@ -19,6 +19,8 @@ DEFAULT_SITES = [
     "FC2",
     "Caribbeancom",
     "CaribbeancomPR",
+    "HEYZO",
+    "HeyDouga",
     "1Pondo",
     "10musume",
     "PACOPACOMAMA",

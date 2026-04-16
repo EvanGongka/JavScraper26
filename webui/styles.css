@@ -170,6 +170,12 @@ select {
   font-size: 12px;
 }
 
+.provider-bulk-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .provider-list {
   list-style: none;
   margin: 0;

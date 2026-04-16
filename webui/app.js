@@ -26,6 +26,8 @@ const proxyEnabled = document.getElementById("proxyEnabled");
 const proxyProtocol = document.getElementById("proxyProtocol");
 const proxyHost = document.getElementById("proxyHost");
 const proxyPort = document.getElementById("proxyPort");
+const selectAllProvidersButton = document.getElementById("selectAllProviders");
+const clearAllProvidersButton = document.getElementById("clearAllProviders");
 
 function renderProviders() {
   providerList.innerHTML = "";
@@ -66,6 +68,18 @@ function renderProviders() {
       renderProviders();
     });
   });
+}
+
+function selectedProviders() {
+  return state.providers.filter((item) => item.enabled).map((item) => item.name);
+}
+
+function setAllProvidersEnabled(enabled) {
+  state.providers = state.providers.map((provider) => ({
+    ...provider,
+    enabled,
+  }));
+  renderProviders();
 }
 
 function renderEntries() {
@@ -186,8 +200,8 @@ function updateConnectivitySummary(results) {
   }
   connectivitySummary.textContent =
     failedCount === 0
-      ? "所有站点都可访问，可以继续刮削。"
-      : `有 ${failedCount} 个站点当前不可访问。你可以填写代理后重新校验，或者启用全局代理 / TUN 模式。`;
+      ? "当前勾选站点都可访问，可以继续刮削。"
+      : `当前勾选站点里有 ${failedCount} 个暂时不可访问。你可以填写代理后重新校验，或者启用全局代理 / TUN 模式。`;
 }
 
 function renderConnectivity(results) {
@@ -211,10 +225,14 @@ function renderConnectivity(results) {
   });
 }
 
-async function checkConnectivityProgressive() {
+async function checkConnectivityProgressive(providerNames = selectedProviders()) {
+  if (!providerNames.length) {
+    window.alert("请至少启用一个站点");
+    return [];
+  }
   const proxy = currentProxyPayload();
-  const results = state.providers.map((provider) => ({
-    name: provider.name,
+  const results = providerNames.map((name) => ({
+    name,
     url: "",
     ok: null,
     status: null,
@@ -224,26 +242,27 @@ async function checkConnectivityProgressive() {
   }));
   renderConnectivity(results);
 
-  await Promise.all(
-    results.map(async (item) => {
-      try {
-        const data = await api(`/api/connectivity/${encodeURIComponent(item.name)}`, {
-          method: "POST",
-          body: JSON.stringify({ proxy }),
-        });
-        Object.assign(item, data, { state: "done" });
-      } catch (error) {
-        Object.assign(item, {
-          ok: false,
-          status: null,
-          detail: error.message,
-          finalUrl: item.url,
-          state: "done",
-        });
-      }
-      renderConnectivity(results);
-    })
-  );
+  try {
+    const data = await api("/api/connectivity", {
+      method: "POST",
+      body: JSON.stringify({ proxy, sites: providerNames }),
+    });
+    data.results.forEach((item, index) => {
+      Object.assign(results[index], item, { state: "done" });
+    });
+  } catch (error) {
+    results.forEach((item) => {
+      Object.assign(item, {
+        ok: false,
+        status: null,
+        detail: error.message,
+        finalUrl: item.url,
+        state: "done",
+      });
+    });
+  }
+
+  renderConnectivity(results);
 
   return results;
 }
@@ -271,8 +290,17 @@ async function pollTask() {
     return;
   }
   if (data.status === "failed") {
+    state.taskId = null;
     window.alert(data.error || "任务失败");
+    return;
   }
+  state.taskId = null;
+  const failedCodes = state.entries.filter((entry) => entry.status === "失败").map((entry) => entry.code);
+  const successCount = state.entries.length - failedCodes.length;
+  const failureText = failedCodes.length
+    ? `\n未成功条目（${failedCodes.length}）：\n${failedCodes.join("\n")}`
+    : "\n全部条目都已抓取成功。";
+  window.alert(`刮削完成。\n成功 ${successCount} 条，失败 ${failedCodes.length} 条。${failureText}`);
 }
 
 async function startTask() {
@@ -284,7 +312,7 @@ async function startTask() {
     window.alert("请先选择输出目录");
     return;
   }
-  const providers = state.providers.filter((item) => item.enabled).map((item) => item.name);
+  const providers = selectedProviders();
   if (!providers.length) {
     window.alert("请至少启用一个站点");
     return;
@@ -292,9 +320,9 @@ async function startTask() {
 
   openConnectivityModal();
   try {
-    const results = await checkConnectivityProgressive();
+    const results = await checkConnectivityProgressive(providers);
     await new Promise((resolve, reject) => {
-      state.connectivityResolved = { resolve, reject, results };
+      state.connectivityResolved = { resolve, reject, results, providers };
     });
   } catch (error) {
     if (error.message === "已取消刮削") {
@@ -351,7 +379,8 @@ document.getElementById("closeConnectivityModal").addEventListener("click", () =
 });
 document.getElementById("recheckConnectivity").addEventListener("click", async () => {
   try {
-    await checkConnectivityProgressive();
+    const providers = state.connectivityResolved?.providers || selectedProviders();
+    await checkConnectivityProgressive(providers);
   } catch (error) {
     window.alert(error.message);
   }
@@ -363,6 +392,18 @@ document.getElementById("continueAfterConnectivity").addEventListener("click", (
   }
   closeConnectivityModal();
 });
+
+if (selectAllProvidersButton) {
+  selectAllProvidersButton.addEventListener("click", () => {
+    setAllProvidersEnabled(true);
+  });
+}
+
+if (clearAllProvidersButton) {
+  clearAllProvidersButton.addEventListener("click", () => {
+    setAllProvidersEnabled(false);
+  });
+}
 
 bootstrap().catch((error) => {
   window.alert(error.message);

@@ -74,18 +74,33 @@ def normalize_cover_url(metadata: MovieMetadata) -> str | None:
     return url
 
 
+def is_downloadable_url(url: str | None) -> bool:
+    text = (url or "").strip()
+    if not text:
+        return False
+    parsed = urlparse(text)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
 def download_cover(client: HttpClient, metadata: MovieMetadata, folder: Path, filename: str, on_log=None) -> Path | None:
     url = normalize_cover_url(metadata)
-    if not url:
+    if not is_downloadable_url(url):
+        if on_log and url:
+            on_log(f"[{metadata.code}] 跳过无效图片地址 {filename}: {url}")
         return None
     parsed = urlparse(url)
     target = folder / filename
-    if on_log:
-        on_log(f"[{metadata.code}] 下载资源: {filename} <- {url}")
-    client.download(url, target, headers={"referer": f"{parsed.scheme}://{parsed.netloc}/"})
-    if on_log:
-        on_log(f"[{metadata.code}] 已保存资源: {target}")
-    return target
+    try:
+        if on_log:
+            on_log(f"[{metadata.code}] 下载资源: {filename} <- {url}")
+        client.download(url, target, headers={"referer": f"{parsed.scheme}://{parsed.netloc}/"})
+        if on_log:
+            on_log(f"[{metadata.code}] 已保存资源: {target}")
+        return target
+    except Exception as exc:
+        if on_log:
+            on_log(f"[{metadata.code}] 资源下载失败 {filename}: {url} ({exc})")
+        return None
 
 
 def move_video_files(entry: ScanEntry, folder: Path, code: str, on_log=None) -> list[Path]:
@@ -108,6 +123,10 @@ def download_preview_images(client: HttpClient, metadata: MovieMetadata, folder:
     extra_dir = folder / "extrafanart"
     extra_dir.mkdir(exist_ok=True)
     for index, url in enumerate(metadata.preview_images):
+        if not is_downloadable_url(url):
+            if on_log:
+                on_log(f"[{metadata.code}] 跳过无效预览图 {index}: {url}")
+            continue
         parsed = urlparse(url)
         suffix = Path(parsed.path).suffix or ".jpg"
         target = extra_dir / f"{index}{suffix}"
@@ -118,9 +137,9 @@ def download_preview_images(client: HttpClient, metadata: MovieMetadata, folder:
             saved.append(target)
             if on_log:
                 on_log(f"[{metadata.code}] 已保存预览图 {index}: {target}")
-        except Exception:
+        except Exception as exc:
             if on_log:
-                on_log(f"[{metadata.code}] 预览图下载失败 {index}: {url}")
+                on_log(f"[{metadata.code}] 预览图下载失败 {index}: {url} ({exc})")
             continue
     return saved
 

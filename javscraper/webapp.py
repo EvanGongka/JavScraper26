@@ -31,6 +31,8 @@ DEFAULT_SITES = [
     "FC2",
     "Caribbeancom",
     "CaribbeancomPR",
+    "HEYZO",
+    "HeyDouga",
     "1Pondo",
     "10musume",
     "PACOPACOMAMA",
@@ -52,6 +54,8 @@ SITE_CONNECTIVITY_TARGETS = {
     "FC2": "https://adult.contents.fc2.com",
     "Caribbeancom": "https://www.caribbeancom.com",
     "CaribbeancomPR": "https://www.caribbeancompr.com",
+    "HEYZO": "https://www.heyzo.com",
+    "HeyDouga": "https://www.heydouga.com",
     "1Pondo": "https://www.1pondo.tv",
     "10musume": "https://www.10musume.com",
     "PACOPACOMAMA": "https://www.pacopacomama.com",
@@ -125,6 +129,7 @@ class StartRequest(BaseModel):
 
 class ConnectivityRequest(BaseModel):
     proxy: Optional[Dict[str, Any]] = None
+    sites: Optional[list[str]] = None
 
 
 app = FastAPI(title="javScraper26")
@@ -236,7 +241,14 @@ def _connectivity_result_for(client: HttpClient, name: str, url: str) -> Dict[st
 def api_connectivity(payload: ConnectivityRequest):
     proxy_url = _proxy_url_from_payload(payload.proxy)
     client = HttpClient(timeout=8, proxy_url=proxy_url)
-    results = [_connectivity_result_for(client, name, url) for name, url in SITE_CONNECTIVITY_TARGETS.items()]
+    if payload.sites:
+        unknown_sites = [name for name in payload.sites if name not in SITE_CONNECTIVITY_TARGETS]
+        if unknown_sites:
+            raise HTTPException(status_code=400, detail=f"未知站点: {', '.join(unknown_sites)}")
+        site_items = [(name, SITE_CONNECTIVITY_TARGETS[name]) for name in payload.sites]
+    else:
+        site_items = list(SITE_CONNECTIVITY_TARGETS.items())
+    results = [_connectivity_result_for(client, name, url) for name, url in site_items]
     return {"results": results}
 
 

@@ -57,6 +57,10 @@ def extract_code_from_text(raw: str) -> str | None:
     if fc2_match:
         return f"FC2-{fc2_match.group(1)}"
 
+    heydouga_match = re.search(r"HEYDOUGA[^A-Z0-9]{0,5}(\d{4})[-\s](\d{3,4}[A-Z]?)", text)
+    if heydouga_match:
+        return f"HEYDOUGA-{heydouga_match.group(1)}-{heydouga_match.group(2)}"
+
     separated = re.search(r"\b([A-Z]{2,10})[-\s](\d{2,6}[A-Z]?)\b", text)
     if separated:
         return f"{separated.group(1)}-{separated.group(2)}"
