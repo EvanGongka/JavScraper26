@@ -23,7 +23,20 @@ from javscraper.utils.browser import get_javdb_cookie_status
 from javscraper.utils.dialogs import pick_directory
 
 
-DEFAULT_SITES = ["JavBus", "JavBooks", "AVBASE", "JAV321", "FC2", "AVMOO", "FreeJavBT", "JavDB"]
+DEFAULT_SITES = [
+    "JavBus",
+    "JavBooks",
+    "AVBASE",
+    "JAV321",
+    "FC2",
+    "1Pondo",
+    "10musume",
+    "PACOPACOMAMA",
+    "MURAMURA",
+    "AVMOO",
+    "FreeJavBT",
+    "JavDB",
+]
 if getattr(sys, "frozen", False):
     BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
 else:
@@ -35,6 +48,10 @@ SITE_CONNECTIVITY_TARGETS = {
     "AVBASE": "https://www.avbase.net",
     "JAV321": "https://www.jav321.com",
     "FC2": "https://adult.contents.fc2.com",
+    "1Pondo": "https://www.1pondo.tv",
+    "10musume": "https://www.10musume.com",
+    "PACOPACOMAMA": "https://www.pacopacomama.com",
+    "MURAMURA": "https://www.muramura.tv",
     "AVMOO": "https://avmoo.website",
     "FreeJavBT": "https://freejavbt.com",
     "JavDB": "https://javdb.com",

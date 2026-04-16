@@ -11,7 +11,20 @@ from javscraper.pipeline import ScrapePipeline
 from javscraper.scanner import scan_directory
 
 
-DEFAULT_SITES = ["JavBus", "JavBooks", "AVBASE", "JAV321", "FC2", "AVMOO", "FreeJavBT", "JavDB"]
+DEFAULT_SITES = [
+    "JavBus",
+    "JavBooks",
+    "AVBASE",
+    "JAV321",
+    "FC2",
+    "1Pondo",
+    "10musume",
+    "PACOPACOMAMA",
+    "MURAMURA",
+    "AVMOO",
+    "FreeJavBT",
+    "JavDB",
+]
 
 
 class App(tk.Tk):
