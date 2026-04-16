@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from javscraper import webapp
+from fastapi import HTTPException
 
 
 class LaunchTests(unittest.TestCase):
@@ -54,6 +55,24 @@ class LaunchTests(unittest.TestCase):
         with patch.dict("os.environ", {"JAVSCRAPER_PORT": "abc"}, clear=False):
             with self.assertRaisesRegex(ValueError, "JAVSCRAPER_PORT must be an integer"):
                 webapp._launch_port()
+
+    def test_connectivity_filters_selected_sites(self) -> None:
+        fake_client = Mock()
+        with (
+            patch.object(webapp, "HttpClient", return_value=fake_client),
+            patch.object(webapp, "_connectivity_result_for", side_effect=lambda client, name, url: {"name": name, "url": url}),
+        ):
+            data = webapp.api_connectivity(webapp.ConnectivityRequest(sites=["HEYZO", "FC2"]))
+
+        self.assertEqual(data["results"], [
+            {"name": "HEYZO", "url": webapp.SITE_CONNECTIVITY_TARGETS["HEYZO"]},
+            {"name": "FC2", "url": webapp.SITE_CONNECTIVITY_TARGETS["FC2"]},
+        ])
+
+    def test_connectivity_rejects_unknown_sites(self) -> None:
+        with self.assertRaises(HTTPException) as ctx:
+            webapp.api_connectivity(webapp.ConnectivityRequest(sites=["Nope"]))
+        self.assertEqual(ctx.exception.status_code, 400)
 
 
 if __name__ == "__main__":

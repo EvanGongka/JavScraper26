@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from javscraper.models import MovieMetadata
+from javscraper.output import download_cover, download_preview_images, is_downloadable_url
+
+
+class DummyClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Path, dict | None]] = []
+
+    def download(self, url: str, destination: Path, *, headers: dict | None = None) -> None:
+        self.calls.append((url, destination, headers))
+        if "fail" in url:
+            raise ValueError("boom")
+        destination.write_bytes(b"ok")
+
+
+class OutputResilienceTests(unittest.TestCase):
+    def test_is_downloadable_url_accepts_http_and_https_only(self) -> None:
+        self.assertTrue(is_downloadable_url("https://example.com/a.jpg"))
+        self.assertTrue(is_downloadable_url("http://example.com/a.jpg"))
+        self.assertFalse(is_downloadable_url("//example.com/a.jpg"))
+        self.assertFalse(is_downloadable_url("example.com/a.jpg"))
+        self.assertFalse(is_downloadable_url(""))
+
+    def test_download_cover_skips_invalid_url_without_raising(self) -> None:
+        client = DummyClient()
+        metadata = MovieMetadata(code="HEYZO-0805", title="test", cover_url="//example.com/a.jpg")
+        logs: list[str] = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = download_cover(client, metadata, Path(temp_dir), "fanart.jpg", logs.append)
+        self.assertIsNone(result)
+        self.assertEqual(client.calls, [])
+        self.assertTrue(any("跳过无效图片地址" in line for line in logs))
+
+    def test_download_cover_swallow_download_error(self) -> None:
+        client = DummyClient()
+        metadata = MovieMetadata(code="HEYZO-0805", title="test", cover_url="https://example.com/fail.jpg")
+        logs: list[str] = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = download_cover(client, metadata, Path(temp_dir), "fanart.jpg", logs.append)
+        self.assertIsNone(result)
+        self.assertEqual(len(client.calls), 1)
+        self.assertTrue(any("资源下载失败" in line for line in logs))
+
+    def test_download_preview_images_skips_invalid_and_failed_urls(self) -> None:
+        client = DummyClient()
+        metadata = MovieMetadata(
+            code="HEYZO-0805",
+            title="test",
+            preview_images=[
+                "//example.com/bad.jpg",
+                "https://example.com/fail.jpg",
+                "https://example.com/ok.jpg",
+            ],
+        )
+        logs: list[str] = []
+        with tempfile.TemporaryDirectory() as temp_dir:
+            saved = download_preview_images(client, metadata, Path(temp_dir), logs.append)
+        self.assertEqual(len(saved), 1)
+        self.assertTrue(saved[0].name.endswith(".jpg"))
+        self.assertEqual(len(client.calls), 2)
+        self.assertTrue(any("跳过无效预览图" in line for line in logs))
+        self.assertTrue(any("预览图下载失败" in line for line in logs))
+
+
+if __name__ == "__main__":
+    unittest.main()

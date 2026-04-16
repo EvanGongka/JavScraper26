@@ -9,26 +9,10 @@ from javscraper.providers.caribbeancompr import CaribbeancomPRProvider
 
 
 class CaribbeanSupportTests(unittest.TestCase):
-    def test_default_sites_insert_caribbean_before_onepondo(self) -> None:
-        expected = [
-            "JavBus",
-            "JavBooks",
-            "AVBASE",
-            "JAV321",
-            "FC2",
-            "Caribbeancom",
-            "CaribbeancomPR",
-            "1Pondo",
-            "10musume",
-            "PACOPACOMAMA",
-            "MURAMURA",
-            "AVMOO",
-            "FreeJavBT",
-            "JavDB",
-        ]
-        self.assertEqual(gui.DEFAULT_SITES, expected)
-        self.assertEqual(webapp.DEFAULT_SITES, expected)
-        self.assertEqual(list(webapp.SITE_CONNECTIVITY_TARGETS.keys()), expected)
+    def test_default_sites_keep_caribbean_before_onepondo(self) -> None:
+        for sites in (gui.DEFAULT_SITES, webapp.DEFAULT_SITES, list(webapp.SITE_CONNECTIVITY_TARGETS.keys())):
+            self.assertLess(sites.index("Caribbeancom"), sites.index("CaribbeancomPR"))
+            self.assertLess(sites.index("CaribbeancomPR"), sites.index("1Pondo"))
 
     def test_provider_classes_register_caribbean_family(self) -> None:
         self.assertIs(PROVIDER_CLASSES["Caribbeancom"], CaribbeancomProvider)
