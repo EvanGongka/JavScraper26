@@ -17,6 +17,8 @@ DEFAULT_SITES = [
     "AVBASE",
     "JAV321",
     "FC2",
+    "Caribbeancom",
+    "CaribbeancomPR",
     "1Pondo",
     "10musume",
     "PACOPACOMAMA",

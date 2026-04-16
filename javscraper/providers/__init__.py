@@ -1,5 +1,7 @@
 from javscraper.providers.avbase import AVBaseProvider
 from javscraper.providers.avmoo import AVMOOProvider
+from javscraper.providers.caribbeancom import CaribbeancomProvider
+from javscraper.providers.caribbeancompr import CaribbeancomPRProvider
 from javscraper.providers.fc2 import FC2Provider
 from javscraper.providers.freejavbt import FreeJavBTProvider
 from javscraper.providers.jav321 import JAV321Provider
@@ -17,6 +19,8 @@ PROVIDER_CLASSES = {
     "JavBus": JavBusProvider,
     "JAV321": JAV321Provider,
     "FC2": FC2Provider,
+    "Caribbeancom": CaribbeancomProvider,
+    "CaribbeancomPR": CaribbeancomPRProvider,
     "1Pondo": OnePondoProvider,
     "10musume": TenMusumeProvider,
     "PACOPACOMAMA": PacopacomamaProvider,
