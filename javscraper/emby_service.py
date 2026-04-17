@@ -13,10 +13,12 @@ from javscraper.images import ImageSources, select_image_sources
 from javscraper.metadata_resolution import resolve_metadata_from_providers
 from javscraper.models import MovieMetadata
 from javscraper.network import HttpClient, build_proxy_url
+from javscraper.provider_catalog import provider_names_for_code
 from javscraper.providers import PROVIDER_CLASSES
 from javscraper.providers.base import ProviderError
 from javscraper.scanner import extract_code_from_text
 from javscraper.service_logging import ServiceLogStore
+from javscraper.utils.browser import get_javdb_cookie_status
 
 
 @dataclass
@@ -125,6 +127,11 @@ class EmbyMovieService:
         self.default_proxy = default_proxy or ProxyConfig()
         self._metadata_cache: dict[tuple[str, str], MovieMetadata] = {}
         self._cache_lock = Lock()
+
+    def javdb_available(self) -> bool:
+        if "JavDB" not in self.provider_names:
+            return False
+        return bool(get_javdb_cookie_status()["available"])
 
     def effective_proxy(self, requested_proxy: ProxyConfig | None) -> ProxyConfig:
         if requested_proxy and requested_proxy.url:
@@ -237,7 +244,13 @@ class EmbyMovieService:
     def fetch_from_providers(self, code: str, *, requested_proxy: ProxyConfig | None) -> ResolvedMovie | None:
         proxy = self.effective_proxy(requested_proxy)
         client = HttpClient(proxy_url=proxy.url)
-        providers = [PROVIDER_CLASSES[name](client) for name in self.provider_names]
+        provider_names = provider_names_for_code(
+            code,
+            self.provider_names,
+            javdb_available=self.javdb_available(),
+        )
+        providers = [PROVIDER_CLASSES[name](client) for name in provider_names]
+        self.log_store.add("INFO", "emby-resolve", f"[{code}] 站点顺序: {' -> '.join(provider_names)}")
         resolved_metadata = resolve_metadata_from_providers(
             code,
             providers,

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable
+
+from javscraper.images import should_crop_poster_from_fanart
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,8 @@ PROVIDER_GROUP_LABELS = {
 }
 
 DEFAULT_SITES = [item.name for item in PROVIDER_CATALOG]
+REGULAR_SITES = [item.name for item in PROVIDER_CATALOG if item.group == "regular"]
+SPECIAL_SITES = [item.name for item in PROVIDER_CATALOG if item.group == "special"]
 
 SITE_CONNECTIVITY_TARGETS = {
     item.name: item.connectivity_target
@@ -46,3 +51,85 @@ PROVIDER_GROUP_BY_NAME = {
     item.name: item.group
     for item in PROVIDER_CATALOG
 }
+
+
+def normalize_provider_names(provider_names: Iterable[str] | None = None) -> list[str]:
+    ordered = provider_names or DEFAULT_SITES
+    result: list[str] = []
+    for name in ordered:
+        text = str(name).strip()
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def provider_group_for_code(code: str | None) -> str:
+    return "regular" if should_crop_poster_from_fanart(code) else "special"
+
+
+def provider_names_for_group(
+    group: str,
+    provider_names: Iterable[str] | None = None,
+    *,
+    javdb_available: bool = True,
+) -> list[str]:
+    names = [
+        name
+        for name in normalize_provider_names(provider_names)
+        if PROVIDER_GROUP_BY_NAME.get(name) in {None, group}
+    ]
+    if javdb_available:
+        return names
+    return [name for name in names if name != "JavDB"]
+
+
+def provider_names_for_code(
+    code: str | None,
+    provider_names: Iterable[str] | None = None,
+    *,
+    javdb_available: bool = True,
+) -> list[str]:
+    return provider_names_for_group(
+        provider_group_for_code(code),
+        provider_names,
+        javdb_available=javdb_available,
+    )
+
+
+def connectivity_provider_names_for_codes(
+    codes: Iterable[str],
+    provider_names: Iterable[str] | None = None,
+    *,
+    javdb_available: bool = True,
+) -> list[str]:
+    needs_regular = False
+    needs_special = False
+    for code in codes:
+        group = provider_group_for_code(code)
+        if group == "regular":
+            needs_regular = True
+        else:
+            needs_special = True
+
+    if not needs_regular and not needs_special:
+        needs_regular = True
+        needs_special = True
+
+    results: list[str] = []
+    if needs_regular:
+        results.extend(
+            provider_names_for_group(
+                "regular",
+                provider_names,
+                javdb_available=javdb_available,
+            )
+        )
+    if needs_special:
+        results.extend(
+            provider_names_for_group(
+                "special",
+                provider_names,
+                javdb_available=javdb_available,
+            )
+        )
+    return results

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.responses import Response
@@ -9,10 +10,15 @@ from PIL import Image
 
 from javscraper.emby_service import ProxyConfig, ResolvedImage
 from javscraper.images import ImageSources, SelectedRegularPoster, image_size
-from javscraper.models import MovieMetadata
+from javscraper.metadata_resolution import ResolvedMetadata
+from javscraper.models import MovieMetadata, ScanEntry
+from javscraper.pipeline import ScrapePipeline
+from javscraper.provider_catalog import REGULAR_SITES, SPECIAL_SITES
 from javscraper.webapp import (
     EMBY_SERVICE,
     SERVICE_LOGS,
+    ConnectivityRequest,
+    api_connectivity,
     emby_health,
     emby_movie_detail,
     emby_movie_image,
@@ -48,6 +54,20 @@ class SuccessProvider:
             genres=["Drama"],
             preview_images=["https://example.com/backdrop.jpg"],
         )
+
+
+class JavBusProviderStub:
+    site_name = "JavBus"
+
+    def __init__(self, client):
+        self.client = client
+
+
+class HeyzoProviderStub:
+    site_name = "HEYZO"
+
+    def __init__(self, client):
+        self.client = client
 
 
 class WebAppTests(unittest.TestCase):
@@ -215,6 +235,72 @@ class WebAppTests(unittest.TestCase):
 
         self.assertEqual(response.media_type, "image/jpeg")
         self.assertEqual(response.body, wide)
+
+    def test_api_connectivity_uses_scanned_codes_to_select_sites(self):
+        def fake_connectivity(client, name, url):
+            return {"name": name, "url": url, "ok": True, "status": 200, "detail": "ok", "finalUrl": url}
+
+        with patch("javscraper.webapp._javdb_available", return_value=False), patch(
+            "javscraper.webapp._connectivity_result_for",
+            side_effect=fake_connectivity,
+        ):
+            payload = ConnectivityRequest(codes=["ABP-123", "HEYZO-0841"])
+            result = api_connectivity(payload)
+
+        self.assertEqual(
+            [item["name"] for item in result["results"]],
+            [name for name in REGULAR_SITES if name != "JavDB"] + SPECIAL_SITES,
+        )
+
+    def test_pipeline_routes_each_entry_by_code_group(self):
+        calls: list[tuple[str, list[str]]] = []
+        entries = [
+            ScanEntry(code="ABP-123", files=[Path("/tmp/abp-123.mp4")]),
+            ScanEntry(code="HEYZO-0841", files=[Path("/tmp/heyzo-0841.mp4")]),
+        ]
+
+        def fake_resolve(code, providers, **kwargs):
+            calls.append((code, [provider.site_name for provider in providers]))
+            return ResolvedMetadata(
+                metadata=MovieMetadata(
+                    code=code,
+                    title=f"{code} title",
+                    cover_url="https://example.com/poster.jpg",
+                ),
+                provider=providers[0].site_name,
+            )
+
+        with patch.dict(
+            "javscraper.pipeline.PROVIDER_CLASSES",
+            {"JavBus": JavBusProviderStub, "HEYZO": HeyzoProviderStub},
+            clear=False,
+        ), patch(
+            "javscraper.pipeline.resolve_metadata_from_providers",
+            side_effect=fake_resolve,
+        ), patch(
+            "javscraper.pipeline.save_result",
+            return_value={"output_folder": "/tmp/out"},
+        ), patch(
+            "javscraper.pipeline.write_manifest",
+            return_value=Path("/tmp/manifest.csv"),
+        ):
+            pipeline = ScrapePipeline(
+                output_root="/tmp/javscraper-test-output",
+                provider_names=["JavBus", "HEYZO"],
+                on_log=lambda text: None,
+                on_status=lambda code, status: None,
+                javdb_available=False,
+            )
+            manifest = pipeline.run(entries)
+
+        self.assertEqual(manifest, Path("/tmp/manifest.csv"))
+        self.assertEqual(
+            calls,
+            [
+                ("ABP-123", ["JavBus"]),
+                ("HEYZO-0841", ["HEYZO"]),
+            ],
+        )
 
 
 if __name__ == "__main__":

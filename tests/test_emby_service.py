@@ -95,6 +95,20 @@ class JavBusStyleProvider:
         )
 
 
+class HeyzoSuccessProvider:
+    site_name = "HEYZO"
+
+    def __init__(self, client):
+        self.client = client
+
+    def fetch(self, code: str):
+        return MovieMetadata(
+            code=code.upper(),
+            title=f"{code.upper()} title",
+            cover_url="https://example.com/heyzo-cover.jpg",
+        )
+
+
 class EmbyServiceTests(unittest.TestCase):
     def setUp(self):
         self.log_store = ServiceLogStore()
@@ -246,6 +260,41 @@ class EmbyServiceTests(unittest.TestCase):
             resolved.metadata.locked_regular_poster_url,
             "https://pics.dmm.co.jp/digital/video/abp00123/abp00123pl.jpg",
         )
+
+    def test_fetch_from_providers_routes_special_code_to_special_sites_only(self):
+        service = EmbyMovieService(
+            provider_names=["JavBus", "HEYZO"],
+            log_store=self.log_store,
+        )
+
+        class RegularShouldNotRunProvider:
+            site_name = "JavBus"
+
+            def __init__(self, client):
+                self.client = client
+
+            def fetch(self, code: str):
+                raise AssertionError("特殊番号不应尝试普通番号站点")
+
+        with patch.dict(
+            "javscraper.emby_service.PROVIDER_CLASSES",
+            {"JavBus": RegularShouldNotRunProvider, "HEYZO": HeyzoSuccessProvider},
+            clear=False,
+        ), patch(
+            "javscraper.emby_service.get_javdb_cookie_status",
+            return_value={"available": False, "reason": "not logged in"},
+        ), patch(
+            "javscraper.metadata_resolution.select_dmm_regular_poster_for_code",
+            return_value=None,
+        ), patch(
+            "javscraper.metadata_resolution.select_best_regular_poster_for_metadata",
+            return_value=None,
+        ):
+            resolved = service.fetch_from_providers("HEYZO-0841", requested_proxy=None)
+
+        assert resolved is not None
+        self.assertEqual(resolved.provider, "HEYZO")
+        self.assertEqual(resolved.metadata.title, "HEYZO-0841 title")
 
     def test_plugin_proxy_overrides_default_proxy(self):
         requested = ProxyConfig(enabled=True, protocol="socks5", host="10.0.0.2", port="1080")

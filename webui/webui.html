@@ -45,11 +45,7 @@
           <div class="section-head">
             <div>
               <h2>站点顺序</h2>
-              <span id="providerHint">勾选启用，JavDB 默认放最后且需要登录</span>
-            </div>
-            <div class="provider-bulk-actions">
-              <button id="selectAllProviders" type="button">全选</button>
-              <button id="clearAllProviders" type="button">全不选</button>
+              <span id="providerHint">按番号类型自动分流；普通番号只跑普通站点，特殊番号只跑特殊站点</span>
             </div>
           </div>
           <ul id="providerList" class="provider-list"></ul>
@@ -92,7 +88,7 @@
           <button id="closeConnectivityModal" class="ghost-button">关闭</button>
         </div>
         <p class="modal-tip">
-          每次刮削前都会先校验当前勾选站点的连通性。如果有站点不通，可以填写代理，或者直接使用全局代理 / TUN 模式。
+          每次刮削前都会根据本次扫描出的普通 / 特殊番号，自动校验当前批次真正会用到的站点。如果有站点不通，可以填写代理，或者直接使用全局代理 / TUN 模式。
         </p>
         <div id="connectivitySummary" class="connectivity-summary"></div>
 

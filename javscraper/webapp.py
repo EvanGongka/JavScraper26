@@ -33,7 +33,14 @@ from javscraper.images import (
 )
 from javscraper.network import HttpClient
 from javscraper.pipeline import ScrapePipeline
-from javscraper.provider_catalog import DEFAULT_SITES, PROVIDER_GROUP_BY_NAME, PROVIDER_GROUP_LABELS, SITE_CONNECTIVITY_TARGETS
+from javscraper.provider_catalog import (
+    DEFAULT_SITES,
+    PROVIDER_GROUP_BY_NAME,
+    PROVIDER_GROUP_LABELS,
+    SITE_CONNECTIVITY_TARGETS,
+    connectivity_provider_names_for_codes,
+    normalize_provider_names,
+)
 from javscraper.scanner import scan_directory
 from javscraper.service_logging import ServiceLogStore
 from javscraper.utils.browser import get_javdb_cookie_status
@@ -114,12 +121,13 @@ class PickRequest(BaseModel):
 class StartRequest(BaseModel):
     sourcePath: str
     outputPath: str
-    providers: list[str]
+    providers: Optional[list[str]] = None
     proxy: Optional[dict[str, Any]] = None
 
 
 class ConnectivityRequest(BaseModel):
     proxy: Optional[dict[str, Any]] = None
+    codes: Optional[list[str]] = None
     sites: Optional[list[str]] = None
 
 
@@ -168,7 +176,7 @@ def _connectivity_result_for(client: HttpClient, name: str, url: str) -> dict[st
 
 
 def _provider_metadata() -> list[dict[str, Any]]:
-    javdb_status = get_javdb_cookie_status()
+    javdb_status = _javdb_status()
     return [
         {
             "name": name,
@@ -177,15 +185,59 @@ def _provider_metadata() -> list[dict[str, Any]]:
             "sortOrder": index,
             "requiresLogin": name == "JavDB",
             "hint": javdb_status["reason"] if name == "JavDB" else "",
-            "defaultEnabled": bool(javdb_status["available"]) if name == "JavDB" else True,
         }
         for index, name in enumerate(DEFAULT_SITES, start=1)
     ]
 
 
+def _javdb_status() -> dict[str, str | bool]:
+    return get_javdb_cookie_status()
+
+
+def _javdb_available() -> bool:
+    return bool(_javdb_status()["available"])
+
+
+def _connectivity_sites_for_payload(payload: ConnectivityRequest) -> list[str]:
+    if payload.sites:
+        unknown_sites = [name for name in payload.sites if name not in SITE_CONNECTIVITY_TARGETS]
+        if unknown_sites:
+            raise HTTPException(status_code=400, detail=f"未知站点: {', '.join(unknown_sites)}")
+        return normalize_provider_names(payload.sites)
+    if payload.codes:
+        return connectivity_provider_names_for_codes(
+            payload.codes,
+            DEFAULT_SITES,
+            javdb_available=_javdb_available(),
+        )
+    return connectivity_provider_names_for_codes(
+        [],
+        DEFAULT_SITES,
+        javdb_available=_javdb_available(),
+    )
+
+
+def _connectivity_result_for_unavailable_provider(name: str, detail: str) -> dict[str, Any]:
+    url = SITE_CONNECTIVITY_TARGETS[name]
+    return {
+        "name": name,
+        "url": url,
+        "ok": False,
+        "status": None,
+        "detail": detail,
+        "finalUrl": url,
+    }
+
+
 def _run_task(task: TaskState) -> None:
     try:
         entries, _ = scan_directory(task.source_path)
+        javdb_available = _javdb_available()
+        task.providers = connectivity_provider_names_for_codes(
+            [entry.code for entry in entries],
+            task.providers,
+            javdb_available=javdb_available,
+        )
         for entry in entries:
             task.set_entry_status(entry.code, "待处理")
 
@@ -195,6 +247,7 @@ def _run_task(task: TaskState) -> None:
             on_log=task.append_log,
             on_status=task.set_entry_status,
             proxy_url=task.proxy_url,
+            javdb_available=javdb_available,
         )
         manifest = pipeline.run(entries)
         task.finish(str(manifest))
@@ -323,13 +376,8 @@ def api_scan(payload: ScanRequest):
 def api_connectivity(payload: ConnectivityRequest):
     proxy_url = _proxy_url_from_payload(payload.proxy)
     client = HttpClient(timeout=8, proxy_url=proxy_url)
-    if payload.sites:
-        unknown_sites = [name for name in payload.sites if name not in SITE_CONNECTIVITY_TARGETS]
-        if unknown_sites:
-            raise HTTPException(status_code=400, detail=f"未知站点: {', '.join(unknown_sites)}")
-        site_items = [(name, SITE_CONNECTIVITY_TARGETS[name]) for name in payload.sites]
-    else:
-        site_items = list(SITE_CONNECTIVITY_TARGETS.items())
+    site_names = _connectivity_sites_for_payload(payload)
+    site_items = [(name, SITE_CONNECTIVITY_TARGETS[name]) for name in site_names]
     return {"results": [_connectivity_result_for(client, name, url) for name, url in site_items]}
 
 
@@ -337,6 +385,8 @@ def api_connectivity(payload: ConnectivityRequest):
 def api_connectivity_single(site_name: str, payload: ConnectivityRequest):
     if site_name not in SITE_CONNECTIVITY_TARGETS:
         raise HTTPException(status_code=404, detail="未知站点")
+    if site_name == "JavDB" and not _javdb_available():
+        return _connectivity_result_for_unavailable_provider(site_name, str(_javdb_status()["reason"]))
     proxy_url = _proxy_url_from_payload(payload.proxy)
     client = HttpClient(timeout=8, proxy_url=proxy_url)
     return _connectivity_result_for(client, site_name, SITE_CONNECTIVITY_TARGETS[site_name])
@@ -348,15 +398,21 @@ def api_start(payload: StartRequest):
     output = Path(payload.outputPath).expanduser()
     if not source.is_dir():
         raise HTTPException(status_code=400, detail="扫描目录不存在")
-    if not payload.providers:
-        raise HTTPException(status_code=400, detail="至少选择一个站点")
+    if payload.providers:
+        unknown_providers = [name for name in payload.providers if name not in SITE_CONNECTIVITY_TARGETS]
+        if unknown_providers:
+            raise HTTPException(status_code=400, detail=f"未知站点: {', '.join(unknown_providers)}")
+
+    provider_order = normalize_provider_names(payload.providers or DEFAULT_SITES)
+    if not provider_order:
+        raise HTTPException(status_code=400, detail="没有可用站点")
 
     task_id = uuid.uuid4().hex[:12]
     task = TaskState(
         task_id=task_id,
         source_path=str(source),
         output_path=str(output),
-        providers=payload.providers,
+        providers=provider_order,
         proxy_url=_proxy_url_from_payload(payload.proxy),
     )
     TASKS[task_id] = task

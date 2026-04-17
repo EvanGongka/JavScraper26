@@ -26,8 +26,6 @@ const proxyEnabled = document.getElementById("proxyEnabled");
 const proxyProtocol = document.getElementById("proxyProtocol");
 const proxyHost = document.getElementById("proxyHost");
 const proxyPort = document.getElementById("proxyPort");
-const selectAllProvidersButton = document.getElementById("selectAllProviders");
-const clearAllProvidersButton = document.getElementById("clearAllProviders");
 
 function renderProviders() {
   providerList.innerHTML = "";
@@ -52,12 +50,11 @@ function renderProviders() {
     const canMoveUp = previous && previous.group === provider.group;
     const canMoveDown = next && next.group === provider.group;
     const hint = provider.requiresLogin
-      ? `<div class="hint-text warn">${provider.hint || "需要浏览器登录态，默认放在最后"}</div>`
-      : `<div class="hint-text">按顺序依次刮削，命中后立即停止后续站点</div>`;
+      ? `<div class="hint-text warn">${provider.hint || "需要浏览器登录态，未登录时会自动跳过"}</div>`
+      : `<div class="hint-text">按顺序依次尝试；普通番号和特殊番号会自动分流</div>`;
     const li = document.createElement("li");
     li.className = "provider-item";
     li.innerHTML = `
-      <input type="checkbox" ${provider.enabled ? "checked" : ""} data-index="${index}" class="provider-toggle" />
       <div>
         <strong>${provider.name}</strong>
         ${hint}
@@ -68,13 +65,6 @@ function renderProviders() {
       </div>
     `;
     providerList.appendChild(li);
-  });
-
-  providerList.querySelectorAll(".provider-toggle").forEach((checkbox) => {
-    checkbox.addEventListener("change", (event) => {
-      const index = Number(event.target.dataset.index);
-      state.providers[index].enabled = event.target.checked;
-    });
   });
 
   providerList.querySelectorAll("[data-move]").forEach((button) => {
@@ -90,16 +80,12 @@ function renderProviders() {
   });
 }
 
-function selectedProviders() {
-  return state.providers.filter((item) => item.enabled).map((item) => item.name);
+function orderedProviders() {
+  return state.providers.map((item) => item.name);
 }
 
-function setAllProvidersEnabled(enabled) {
-  state.providers = state.providers.map((provider) => ({
-    ...provider,
-    enabled,
-  }));
-  renderProviders();
+function currentEntryCodes() {
+  return state.entries.map((entry) => entry.code);
 }
 
 function renderEntries() {
@@ -220,8 +206,8 @@ function updateConnectivitySummary(results) {
   }
   connectivitySummary.textContent =
     failedCount === 0
-      ? "当前勾选站点都可访问，可以继续刮削。"
-      : `当前勾选站点里有 ${failedCount} 个暂时不可访问。你可以填写代理后重新校验，或者启用全局代理 / TUN 模式。`;
+      ? "当前批次需要的站点都可访问，可以继续刮削。"
+      : `当前批次需要的站点里有 ${failedCount} 个暂时不可访问。你可以填写代理后重新校验，或者启用全局代理 / TUN 模式。`;
 }
 
 function renderConnectivity(results) {
@@ -245,41 +231,27 @@ function renderConnectivity(results) {
   });
 }
 
-async function checkConnectivityProgressive(providerNames = selectedProviders()) {
-  if (!providerNames.length) {
-    window.alert("请至少启用一个站点");
+async function checkConnectivityProgressive(codes = currentEntryCodes()) {
+  if (!codes.length) {
+    window.alert("请先扫描出至少一个可识别番号");
     return [];
   }
   const proxy = currentProxyPayload();
-  const results = providerNames.map((name) => ({
-    name,
-    url: "",
-    ok: null,
-    status: null,
-    detail: "",
-    finalUrl: "",
-    state: "loading",
-  }));
+  const results = [];
   renderConnectivity(results);
+  connectivitySummary.textContent = "正在分析本次批量任务需要校验的站点...";
 
   try {
     const data = await api("/api/connectivity", {
       method: "POST",
-      body: JSON.stringify({ proxy, sites: providerNames }),
+      body: JSON.stringify({ proxy, codes }),
     });
-    data.results.forEach((item, index) => {
-      Object.assign(results[index], item, { state: "done" });
+    data.results.forEach((item) => {
+      results.push({ ...item, state: "done" });
     });
   } catch (error) {
-    results.forEach((item) => {
-      Object.assign(item, {
-        ok: false,
-        status: null,
-        detail: error.message,
-        finalUrl: item.url,
-        state: "done",
-      });
-    });
+    connectivitySummary.textContent = "站点校验失败";
+    throw error;
   }
 
   renderConnectivity(results);
@@ -332,17 +304,13 @@ async function startTask() {
     window.alert("请先选择输出目录");
     return;
   }
-  const providers = selectedProviders();
-  if (!providers.length) {
-    window.alert("请至少启用一个站点");
-    return;
-  }
+  const codes = currentEntryCodes();
 
   openConnectivityModal();
   try {
-    const results = await checkConnectivityProgressive(providers);
+    const results = await checkConnectivityProgressive(codes);
     await new Promise((resolve, reject) => {
-      state.connectivityResolved = { resolve, reject, results, providers };
+      state.connectivityResolved = { resolve, reject, results, codes };
     });
   } catch (error) {
     if (error.message === "已取消刮削") {
@@ -364,7 +332,7 @@ async function startTask() {
       body: JSON.stringify({
         sourcePath: sourcePath.value.trim(),
         outputPath: outputPath.value.trim(),
-        providers,
+        providers: orderedProviders(),
         proxy: currentProxyPayload(),
       }),
     });
@@ -378,10 +346,7 @@ async function startTask() {
 
 async function bootstrap() {
   const data = await api("/api/providers");
-  state.providers = data.providers.map((item) => ({
-    ...item,
-    enabled: item.defaultEnabled !== false,
-  }));
+  state.providers = data.providers.map((item) => ({ ...item }));
   renderProviders();
   renderEntries();
 }
@@ -399,8 +364,8 @@ document.getElementById("closeConnectivityModal").addEventListener("click", () =
 });
 document.getElementById("recheckConnectivity").addEventListener("click", async () => {
   try {
-    const providers = state.connectivityResolved?.providers || selectedProviders();
-    await checkConnectivityProgressive(providers);
+    const codes = state.connectivityResolved?.codes || currentEntryCodes();
+    await checkConnectivityProgressive(codes);
   } catch (error) {
     window.alert(error.message);
   }
@@ -412,18 +377,6 @@ document.getElementById("continueAfterConnectivity").addEventListener("click", (
   }
   closeConnectivityModal();
 });
-
-if (selectAllProvidersButton) {
-  selectAllProvidersButton.addEventListener("click", () => {
-    setAllProvidersEnabled(true);
-  });
-}
-
-if (clearAllProvidersButton) {
-  clearAllProvidersButton.addEventListener("click", () => {
-    setAllProvidersEnabled(false);
-  });
-}
 
 bootstrap().catch((error) => {
   window.alert(error.message);

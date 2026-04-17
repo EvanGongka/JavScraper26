@@ -251,12 +251,6 @@ select {
   font-size: 12px;
 }
 
-.provider-bulk-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .provider-list {
   list-style: none;
   margin: 0;
@@ -285,7 +279,7 @@ select {
 
 .provider-item {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 1fr auto;
   gap: 10px;
   align-items: center;
   padding: 10px 12px;
