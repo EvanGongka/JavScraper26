@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>javScraper26 Service Mode</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260416c" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div class="hero-main">
+          <p class="eyebrow">Emby 服务模式</p>
+          <h1>javScraper26</h1>
+          <p class="subtitle">为 Emby 插件提供电影元数据与图片接口，同时展示最近请求和抓取日志</p>
+        </div>
+        <div class="hero-actions">
+          <a class="ghost-link" href="/">返回模式选择</a>
+          <a class="ghost-link" href="/webui">打开普通模式</a>
+        </div>
+      </header>
+
+      <section class="service-grid">
+        <article class="card service-card">
+          <div class="section-head">
+            <h2>服务状态</h2>
+            <span id="healthStatus">加载中</span>
+          </div>
+          <dl class="service-stats">
+            <div>
+              <dt>模式</dt>
+              <dd id="runtimeMode">-</dd>
+            </div>
+            <div>
+              <dt>Provider 数量</dt>
+              <dd id="providerCount">-</dd>
+            </div>
+            <div>
+              <dt>默认代理</dt>
+              <dd id="defaultProxyState">-</dd>
+            </div>
+            <div>
+              <dt>日志条数</dt>
+              <dd id="logCount">-</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="card service-card">
+          <div class="section-head">
+            <h2>插件接入信息</h2>
+            <span>Emby 插件内填写</span>
+          </div>
+          <div class="service-copy-list">
+            <div>
+              <strong>Server URL</strong>
+              <code id="serverUrl">-</code>
+            </div>
+            <div>
+              <strong>元数据解析</strong>
+              <code>/emby-api/v1/movies/resolve</code>
+            </div>
+            <div>
+              <strong>详情接口</strong>
+              <code>/emby-api/v1/movies/{provider}/{id}</code>
+            </div>
+            <div>
+              <strong>图片接口</strong>
+              <code>/emby-api/v1/images/primary|thumb|backdrop/{provider}/{id}</code>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="card service-log-card">
+        <div class="section-head">
+          <h2>最近日志</h2>
+          <span id="logMeta">每 3 秒自动刷新</span>
+        </div>
+        <div id="serviceLogList" class="service-log-list"></div>
+      </section>
+    </div>
+    <script src="/static/service.js?v=20260416c"></script>
+  </body>
+</html>

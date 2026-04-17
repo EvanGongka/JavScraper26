@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlparse
 
+from javscraper.images import crop_to_poster, download_image_bytes, is_portrait_image, select_image_sources, should_crop_poster_from_fanart
 from javscraper.models import MovieMetadata, ScanEntry
 from javscraper.network import HttpClient
 
@@ -62,18 +63,6 @@ def write_nfo(metadata: MovieMetadata, folder: Path) -> Path:
     return path
 
 
-def normalize_cover_url(metadata: MovieMetadata) -> str | None:
-    if not metadata.cover_url:
-        return None
-    url = metadata.cover_url
-    if len(url) % 2 == 0:
-        half = len(url) // 2
-        if url[:half] == url[half:] and url.startswith(("http://", "https://")):
-            url = url[:half]
-            metadata.cover_url = url
-    return url
-
-
 def is_downloadable_url(url: str | None) -> bool:
     text = (url or "").strip()
     if not text:
@@ -82,25 +71,29 @@ def is_downloadable_url(url: str | None) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
-def download_cover(client: HttpClient, metadata: MovieMetadata, folder: Path, filename: str, on_log=None) -> Path | None:
-    url = normalize_cover_url(metadata)
+def _download_image(client: HttpClient, code: str, url: str | None, folder: Path, filename: str, on_log=None) -> tuple[Path | None, bytes | None]:
     if not is_downloadable_url(url):
         if on_log and url:
-            on_log(f"[{metadata.code}] 跳过无效图片地址 {filename}: {url}")
-        return None
-    parsed = urlparse(url)
+            on_log(f"[{code}] 跳过无效图片地址 {filename}: {url}")
+        return None, None
     target = folder / filename
     try:
         if on_log:
-            on_log(f"[{metadata.code}] 下载资源: {filename} <- {url}")
-        client.download(url, target, headers={"referer": f"{parsed.scheme}://{parsed.netloc}/"})
+            on_log(f"[{code}] 下载资源: {filename} <- {url}")
+        image_bytes, _ = download_image_bytes(client, url)
+        target.write_bytes(image_bytes)
         if on_log:
-            on_log(f"[{metadata.code}] 已保存资源: {target}")
-        return target
+            on_log(f"[{code}] 已保存资源: {target}")
+        return target, image_bytes
     except Exception as exc:
         if on_log:
-            on_log(f"[{metadata.code}] 资源下载失败 {filename}: {url} ({exc})")
-        return None
+            on_log(f"[{code}] 资源下载失败 {filename}: {url} ({exc})")
+        return None, None
+
+
+def download_cover(client: HttpClient, metadata: MovieMetadata, folder: Path, filename: str, on_log=None) -> Path | None:
+    path, _ = _download_image(client, metadata.code, metadata.cover_url, folder, filename, on_log)
+    return path
 
 
 def move_video_files(entry: ScanEntry, folder: Path, code: str, on_log=None) -> list[Path]:
@@ -150,19 +143,83 @@ def build_movie_folder(output_root: Path, metadata: MovieMetadata) -> Path:
     return folder
 
 
+def _write_poster(entry: ScanEntry, folder: Path, fanart_bytes: bytes | None, on_log=None) -> Path | None:
+    poster_target = folder / "poster.jpg"
+    if not fanart_bytes:
+        return None
+    if should_crop_poster_from_fanart(entry.code):
+        poster_target.write_bytes(crop_to_poster(fanart_bytes))
+        if on_log:
+            on_log(f"[{entry.code}] 已根据 fanart 裁剪生成 poster: {poster_target}")
+    else:
+        poster_target.write_bytes(fanart_bytes)
+        if on_log:
+            on_log(f"[{entry.code}] 已复制 fanart 作为 poster: {poster_target}")
+    return poster_target
+
+
+def _download_best_landscape_image(
+    client: HttpClient,
+    entry: ScanEntry,
+    folder: Path,
+    filename: str,
+    candidates: list[str | None],
+    on_log=None,
+) -> tuple[Path | None, bytes | None, str | None]:
+    fallback: tuple[Path, bytes, str] | None = None
+    seen: set[str] = set()
+    for url in candidates:
+        if not is_downloadable_url(url) or url in seen:
+            continue
+        seen.add(url)
+        path, image_bytes = _download_image(client, entry.code, url, folder, filename, on_log)
+        if path is None or image_bytes is None:
+            continue
+        if fallback is None:
+            fallback = (path, image_bytes, url)
+        if not is_portrait_image(image_bytes):
+            return path, image_bytes, url
+        if on_log:
+            on_log(f"[{entry.code}] {filename} 候选为竖图，继续尝试下一候选: {url}")
+    if fallback is not None:
+        return fallback
+    return None, None, None
+
+
 def save_result(client: HttpClient, output_root: Path, entry: ScanEntry, metadata: MovieMetadata, on_log=None) -> dict:
     folder = build_movie_folder(output_root, metadata)
     move_video_files(entry, folder, metadata.code, on_log)
     if on_log:
         on_log(f"[{entry.code}] 写入 NFO: {folder / 'movie.nfo'}")
     write_nfo(metadata, folder)
-    fanart_path = download_cover(client, metadata, folder, "fanart.jpg", on_log)
-    poster_path = None
-    if fanart_path and fanart_path.exists():
-        poster_path = folder / "poster.jpg"
-        shutil.copy2(fanart_path, poster_path)
+    select_image_sources(metadata)
+
+    fanart_path, fanart_bytes, fanart_url = _download_best_landscape_image(
+        client,
+        entry,
+        folder,
+        "fanart.jpg",
+        [
+            metadata.thumb_url,
+            metadata.preview_images[0] if metadata.preview_images else None,
+            metadata.cover_url,
+        ],
+        on_log,
+    )
+
+    thumb_path = None
+    if fanart_path and fanart_url:
+        thumb_path = folder / "thumb.jpg"
+        shutil.copy2(fanart_path, thumb_path)
         if on_log:
-            on_log(f"[{entry.code}] 生成 poster: {poster_path}")
+            on_log(f"[{entry.code}] 复制 thumb: {thumb_path}")
+
+    poster_path = _write_poster(
+        entry,
+        folder,
+        fanart_bytes,
+        on_log,
+    )
     extrafanart_paths = download_preview_images(client, metadata, folder, on_log)
 
     return {
@@ -172,7 +229,8 @@ def save_result(client: HttpClient, output_root: Path, entry: ScanEntry, metadat
         "title": metadata.title or "",
         "providers": "|".join(metadata.providers),
         "output_folder": str(folder),
-        "cover_file": str(fanart_path) if fanart_path else "",
+        "fanart_file": str(fanart_path) if fanart_path else "",
+        "thumb_file": str(thumb_path) if thumb_path else "",
         "poster_file": str(poster_path) if poster_path else "",
         "actress_folder": actress_folder_name(metadata),
         "preview_count": str(len(extrafanart_paths)),
@@ -189,7 +247,8 @@ def write_manifest(rows: list[dict], output_root: Path) -> Path:
         "providers",
         "actress_folder",
         "output_folder",
-        "cover_file",
+        "fanart_file",
+        "thumb_file",
         "poster_file",
         "preview_count",
     ]

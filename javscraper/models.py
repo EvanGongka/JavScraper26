@@ -26,6 +26,7 @@ class MovieMetadata:
     original_title: str | None = None
     detail_url: str | None = None
     cover_url: str | None = None
+    thumb_url: str | None = None
     release_date: str | None = None
     duration_minutes: str | None = None
     director: str | None = None
@@ -47,6 +48,7 @@ class MovieMetadata:
             "original_title",
             "detail_url",
             "cover_url",
+            "thumb_url",
             "release_date",
             "duration_minutes",
             "director",
@@ -87,7 +89,7 @@ class MovieMetadata:
 
     @property
     def is_usable(self) -> bool:
-        return bool(self.title and self.cover_url)
+        return bool(self.title and (self.cover_url or self.thumb_url or self.preview_images))
 
     def to_dict(self) -> dict:
         return asdict(self)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from javscraper.models import MovieMetadata
 from javscraper.output import download_cover, download_preview_images, is_downloadable_url
@@ -11,6 +12,21 @@ from javscraper.output import download_cover, download_preview_images, is_downlo
 class DummyClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Path, dict | None]] = []
+
+    def request(self, method: str, url: str, *, headers: dict | None = None, raise_for_status: bool = True, **kwargs):
+        destination = Mock()
+        destination.content = b"ok"
+        destination.headers = {"content-type": "image/jpeg"}
+        destination.status_code = 200
+        destination.raise_for_status = Mock()
+        if "fail" in url:
+            def _raise() -> None:
+                raise ValueError("boom")
+            destination.raise_for_status.side_effect = _raise
+        self.calls.append((url, Path("memory"), headers))
+        if raise_for_status:
+            destination.raise_for_status()
+        return destination
 
     def download(self, url: str, destination: Path, *, headers: dict | None = None) -> None:
         self.calls.append((url, destination, headers))

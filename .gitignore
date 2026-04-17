@@ -11,7 +11,16 @@ build/
 dist/
 release/
 
-test/
+test*
+!tests/
+!tests/**
+tests/__pycache__/
+tests/**/*.pyc
+tests
+metatube
+.local-notes/
+emby-plugin/**/bin/
+emby-plugin/**/obj/
 
 *.spec
 

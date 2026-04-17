@@ -109,6 +109,7 @@ class AVBaseProvider(Provider):
         metadata.cover_url = self.clean_url(primary_product.get("image_url")) or self.clean_url(
             primary_product.get("thumbnail_url")
         )
+        metadata.thumb_url = self.clean_url(primary_product.get("thumbnail_url"))
         metadata.release_date = self._parse_date(detail_work.get("min_date")) or self._parse_date(
             primary_product.get("date")
         )

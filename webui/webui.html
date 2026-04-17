@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>javScraper26</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260416c" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div class="hero-main">
+          <p class="eyebrow">普通 WebUI</p>
+          <h1>javScraper26</h1>
+          <p class="subtitle">本地运行 · 浏览器界面 · Python 抓取核心</p>
+        </div>
+        <div class="hero-actions">
+          <a class="ghost-link" href="/">返回模式选择</a>
+          <button id="startButton" class="primary">开始刮削</button>
+        </div>
+      </header>
+
+      <section class="control-panel card">
+        <div class="field-grid">
+          <label class="field">
+            <span>扫描目录</span>
+            <div class="input-row">
+              <input id="sourcePath" type="text" placeholder="选择待扫描目录" />
+              <button id="pickSource">选择目录</button>
+              <button id="scanButton">扫描</button>
+            </div>
+          </label>
+          <label class="field">
+            <span>输出目录</span>
+            <div class="input-row">
+              <input id="outputPath" type="text" placeholder="选择结果输出目录" />
+              <button id="pickOutput">选择目录</button>
+            </div>
+          </label>
+        </div>
+      </section>
+
+      <main class="workspace">
+        <section class="card providers">
+          <div class="section-head">
+            <div>
+              <h2>站点顺序</h2>
+              <span id="providerHint">勾选启用，JavDB 默认放最后且需要登录</span>
+            </div>
+            <div class="provider-bulk-actions">
+              <button id="selectAllProviders" type="button">全选</button>
+              <button id="clearAllProviders" type="button">全不选</button>
+            </div>
+          </div>
+          <ul id="providerList" class="provider-list"></ul>
+        </section>
+
+        <section class="card results">
+          <div class="section-head">
+            <h2>扫描结果</h2>
+            <span id="scanSummary">还没有扫描</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>番号</th>
+                  <th>文件数</th>
+                  <th>首文件</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody id="resultBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card logs">
+          <div class="section-head">
+            <h2>运行日志</h2>
+            <span id="taskSummary">未启动任务</span>
+          </div>
+          <pre id="logOutput" class="log-output"></pre>
+        </section>
+      </main>
+    </div>
+
+    <div id="connectivityModal" class="modal hidden">
+      <div class="modal-card">
+        <div class="section-head">
+          <h2>站点连通性校验</h2>
+          <button id="closeConnectivityModal" class="ghost-button">关闭</button>
+        </div>
+        <p class="modal-tip">
+          每次刮削前都会先校验当前勾选站点的连通性。如果有站点不通，可以填写代理，或者直接使用全局代理 / TUN 模式。
+        </p>
+        <div id="connectivitySummary" class="connectivity-summary"></div>
+
+        <div class="modal-actions">
+          <button id="recheckConnectivity">重新校验</button>
+          <button id="continueAfterConnectivity" class="primary">继续刮削</button>
+        </div>
+
+        <div class="modal-scroll">
+          <div id="connectivityResults" class="connectivity-results"></div>
+
+          <div class="proxy-box">
+            <label class="proxy-enable">
+              <input id="proxyEnabled" type="checkbox" />
+              <span>使用应用内代理</span>
+            </label>
+            <div class="proxy-grid">
+              <label class="field">
+                <span>协议</span>
+                <select id="proxyProtocol">
+                  <option value="http">http</option>
+                  <option value="https">https</option>
+                  <option value="socks5">socks5</option>
+                  <option value="socks5h">socks5h</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>代理地址</span>
+                <input id="proxyHost" type="text" placeholder="127.0.0.1" />
+              </label>
+              <label class="field">
+                <span>端口</span>
+                <input id="proxyPort" type="text" placeholder="7890" />
+              </label>
+            </div>
+            <p class="proxy-tip">
+              如果你已经使用全局代理或 TUN 模式，一般不需要在这里再填一次。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="/static/app.js?v=20260416c"></script>
+  </body>
+</html>
