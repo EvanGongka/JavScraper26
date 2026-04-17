@@ -79,7 +79,8 @@ class WebAppTests(unittest.TestCase):
     def test_root_page_and_mode_routes(self):
         response = index()
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(str(response.path).endswith("webui/index.html"))
+        self.assertEqual(Path(response.path).name, "index.html")
+        self.assertEqual(Path(response.path).parent.name, "webui")
 
         self.assertEqual(webui_page().status_code, 200)
         self.assertEqual(service_page().status_code, 200)
