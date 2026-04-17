@@ -31,7 +31,26 @@ const clearAllProvidersButton = document.getElementById("clearAllProviders");
 
 function renderProviders() {
   providerList.innerHTML = "";
+  let currentGroup = "";
   state.providers.forEach((provider, index) => {
+    if (provider.group !== currentGroup) {
+      currentGroup = provider.group;
+      const groupItem = document.createElement("li");
+      groupItem.className = "provider-group";
+      groupItem.innerHTML = `
+        <div class="provider-group-title">${provider.groupLabel}</div>
+        <div class="provider-group-tip">${
+          provider.group === "regular"
+            ? "优先尝试普通番号站点，先用原生竖图，拿不到再裁切"
+            : "特殊番号站点默认三图同源，顺序固定在普通站点之后"
+        }</div>
+      `;
+      providerList.appendChild(groupItem);
+    }
+    const previous = state.providers[index - 1];
+    const next = state.providers[index + 1];
+    const canMoveUp = previous && previous.group === provider.group;
+    const canMoveDown = next && next.group === provider.group;
     const hint = provider.requiresLogin
       ? `<div class="hint-text warn">${provider.hint || "需要浏览器登录态，默认放在最后"}</div>`
       : `<div class="hint-text">按顺序依次刮削，命中后立即停止后续站点</div>`;
@@ -44,8 +63,8 @@ function renderProviders() {
         ${hint}
       </div>
       <div class="provider-actions">
-        <button data-move="up" data-index="${index}">上移</button>
-        <button data-move="down" data-index="${index}">下移</button>
+        <button data-move="up" data-index="${index}" ${canMoveUp ? "" : "disabled"}>上移</button>
+        <button data-move="down" data-index="${index}" ${canMoveDown ? "" : "disabled"}>下移</button>
       </div>
     `;
     providerList.appendChild(li);
@@ -64,6 +83,7 @@ function renderProviders() {
       const direction = button.dataset.move;
       const target = direction === "up" ? index - 1 : index + 1;
       if (target < 0 || target >= state.providers.length) return;
+      if (state.providers[index].group !== state.providers[target].group) return;
       [state.providers[index], state.providers[target]] = [state.providers[target], state.providers[index]];
       renderProviders();
     });

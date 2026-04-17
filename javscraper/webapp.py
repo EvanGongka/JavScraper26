@@ -23,33 +23,21 @@ from javscraper.emby_service import (
     default_proxy_from_env,
     proxy_from_query,
 )
-from javscraper.images import crop_to_poster, download_image_bytes, is_portrait_image, should_crop_poster_from_fanart
+from javscraper.images import (
+    crop_to_poster,
+    download_image_bytes,
+    is_portrait_image,
+    landscape_image_candidates,
+    poster_image_candidates,
+    should_crop_poster_from_fanart,
+)
 from javscraper.network import HttpClient
 from javscraper.pipeline import ScrapePipeline
+from javscraper.provider_catalog import DEFAULT_SITES, PROVIDER_GROUP_BY_NAME, PROVIDER_GROUP_LABELS, SITE_CONNECTIVITY_TARGETS
 from javscraper.scanner import scan_directory
 from javscraper.service_logging import ServiceLogStore
 from javscraper.utils.browser import get_javdb_cookie_status
 from javscraper.utils.dialogs import pick_directory
-
-
-DEFAULT_SITES = [
-    "JavBus",
-    "JavBooks",
-    "AVBASE",
-    "JAV321",
-    "FC2",
-    "Caribbeancom",
-    "CaribbeancomPR",
-    "HEYZO",
-    "HeyDouga",
-    "1Pondo",
-    "10musume",
-    "PACOPACOMAMA",
-    "MURAMURA",
-    "AVMOO",
-    "FreeJavBT",
-    "JavDB",
-]
 
 if getattr(sys, "frozen", False):
     BASE_DIR = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
@@ -57,24 +45,6 @@ else:
     BASE_DIR = Path(__file__).resolve().parent.parent
 
 WEB_DIR = BASE_DIR / "webui"
-SITE_CONNECTIVITY_TARGETS = {
-    "JavBus": "https://www.javbus.com",
-    "JavBooks": "https://javbooks.com",
-    "AVBASE": "https://www.avbase.net",
-    "JAV321": "https://www.jav321.com",
-    "FC2": "https://adult.contents.fc2.com",
-    "Caribbeancom": "https://www.caribbeancom.com",
-    "CaribbeancomPR": "https://www.caribbeancompr.com",
-    "HEYZO": "https://www.heyzo.com",
-    "HeyDouga": "https://www.heydouga.com",
-    "1Pondo": "https://www.1pondo.tv",
-    "10musume": "https://www.10musume.com",
-    "PACOPACOMAMA": "https://www.pacopacomama.com",
-    "MURAMURA": "https://www.muramura.tv",
-    "AVMOO": "https://avmoo.website",
-    "FreeJavBT": "https://freejavbt.com",
-    "JavDB": "https://javdb.com",
-}
 IGNORED_SERVICE_LOG_PATHS = {
     "/emby-api/v1/health",
     "/emby-api/v1/logs/recent",
@@ -202,11 +172,14 @@ def _provider_metadata() -> list[dict[str, Any]]:
     return [
         {
             "name": name,
+            "group": PROVIDER_GROUP_BY_NAME[name],
+            "groupLabel": PROVIDER_GROUP_LABELS[PROVIDER_GROUP_BY_NAME[name]],
+            "sortOrder": index,
             "requiresLogin": name == "JavDB",
             "hint": javdb_status["reason"] if name == "JavDB" else "",
             "defaultEnabled": bool(javdb_status["available"]) if name == "JavDB" else True,
         }
-        for name in DEFAULT_SITES
+        for index, name in enumerate(DEFAULT_SITES, start=1)
     ]
 
 
@@ -257,6 +230,18 @@ def _fetch_best_landscape_image(urls: list[str | None], proxy: ProxyConfig) -> t
             return content, media_type
     if fallback is not None:
         return fallback
+    raise HTTPException(status_code=404, detail="该条目没有可用图片")
+
+
+def _fetch_best_portrait_image(urls: list[str | None], proxy: ProxyConfig) -> tuple[bytes, str]:
+    seen: set[str] = set()
+    for url in urls:
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        content, media_type = _fetch_remote_image(url, proxy)
+        if is_portrait_image(content):
+            return content, media_type
     raise HTTPException(status_code=404, detail="该条目没有可用图片")
 
 
@@ -457,23 +442,25 @@ def emby_movie_image(
     resolved_image = EMBY_SERVICE.get_image(image_type, provider, provider_item_id, requested_proxy=requested_proxy)
 
     if image_type == "primary":
-        fanart_url = resolved_image.sources.fanart_url
-        if not fanart_url:
-            raise HTTPException(status_code=404, detail="该条目没有可用图片")
-        fanart_bytes, media_type = _fetch_remote_image(fanart_url, effective_proxy)
+        if should_crop_poster_from_fanart(resolved_image.metadata.code):
+            try:
+                content, media_type = _fetch_best_portrait_image(
+                    poster_image_candidates(resolved_image.metadata),
+                    effective_proxy,
+                )
+                return Response(content=content, media_type=media_type)
+            except HTTPException:
+                pass
+        fanart_bytes, media_type = _fetch_best_landscape_image(
+            landscape_image_candidates(resolved_image.metadata),
+            effective_proxy,
+        )
         if should_crop_poster_from_fanart(resolved_image.metadata.code):
             return Response(content=crop_to_poster(fanart_bytes), media_type="image/jpeg")
         return Response(content=fanart_bytes, media_type=media_type)
 
     if image_type in {"thumb", "backdrop"}:
-        content, media_type = _fetch_best_landscape_image(
-            [
-                resolved_image.sources.thumb_url if image_type == "thumb" else resolved_image.sources.fanart_url,
-                resolved_image.metadata.preview_images[0] if resolved_image.metadata.preview_images else None,
-                resolved_image.metadata.cover_url,
-            ],
-            effective_proxy,
-        )
+        content, media_type = _fetch_best_landscape_image(landscape_image_candidates(resolved_image.metadata), effective_proxy)
         return Response(content=content, media_type=media_type)
 
     return _stream_remote_image(resolved_image.url, effective_proxy)

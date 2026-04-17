@@ -171,7 +171,7 @@ class EmbyMovieService:
         metadata = resolved.metadata
         sources = select_image_sources(metadata)
         if image_type == "primary":
-            image_url = sources.fanart_url
+            image_url = sources.poster_url or sources.fanart_url
         elif image_type == "thumb":
             image_url = sources.fanart_url
         elif image_type == "backdrop":
@@ -287,7 +287,7 @@ class EmbyMovieService:
             "score": metadata.score or "",
             "actors": list(metadata.actresses),
             "genres": list(metadata.genres),
-            "coverUrl": sources.fanart_url or "",
+            "coverUrl": sources.poster_url or sources.fanart_url or "",
             "thumbUrl": sources.fanart_url or "",
             "fanartUrl": sources.fanart_url or "",
             "previewImages": list(metadata.preview_images),

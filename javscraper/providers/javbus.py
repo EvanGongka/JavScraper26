@@ -1,11 +1,43 @@
 from __future__ import annotations
 
+import re
+
 from javscraper.providers.base import Provider, ProviderError
 
 
 class JavBusProvider(Provider):
     site_name = "JavBus"
     hosts = ("https://www.seedmm.help", "https://www.javbus.com")
+
+    _COVER_RE = re.compile(r"(?i)/cover/([a-z\d]+)(?:_b)?\.(jpg|png)$")
+
+    def _guess_thumb_url(self, cover_url: str | None) -> str | None:
+        text = self.clean_url(cover_url)
+        if not text:
+            return None
+        match = self._COVER_RE.search(text)
+        if not match:
+            return None
+        image_id, ext = match.groups()
+        candidates = (
+            f"https://www.javbus.com/pics/thumb/{image_id}.{ext}",
+            f"https://www.javbus.com/pics/thumbs/{image_id}.{ext}",
+        )
+        for url in candidates:
+            try:
+                response = self.client.request(
+                    "HEAD",
+                    url,
+                    headers={"referer": "https://www.javbus.com/"},
+                    allow_redirects=True,
+                    raise_for_status=False,
+                )
+            except Exception:
+                continue
+            content_type = response.headers.get("content-type", "")
+            if response.status_code == 200 and content_type.startswith("image/"):
+                return url
+        return None
 
     def fetch(self, code: str):
         last_error = None
@@ -50,6 +82,7 @@ class JavBusProvider(Provider):
         metadata.detail_url = detail_url.replace("https://www.seedmm.help", "https://www.javbus.com")
         metadata.title = title.replace(metadata.code, "").strip() if title else None
         metadata.cover_url = self.clean_url("".join(container.xpath(".//a[@class='bigImage']/img/@src")))
+        metadata.thumb_url = self._guess_thumb_url(metadata.cover_url)
         metadata.release_date = self.clean_text("".join(info.xpath(".//p/span[text()='發行日期:']/following-sibling::text()[1]"))) or None
         metadata.duration_minutes = self.extract_duration(
             self.clean_text("".join(info.xpath(".//p/span[text()='長度:']/following-sibling::text()[1]")))

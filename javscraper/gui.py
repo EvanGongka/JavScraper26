@@ -8,27 +8,8 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from javscraper.pipeline import ScrapePipeline
+from javscraper.provider_catalog import DEFAULT_SITES
 from javscraper.scanner import scan_directory
-
-
-DEFAULT_SITES = [
-    "JavBus",
-    "JavBooks",
-    "AVBASE",
-    "JAV321",
-    "FC2",
-    "Caribbeancom",
-    "CaribbeancomPR",
-    "HEYZO",
-    "HeyDouga",
-    "1Pondo",
-    "10musume",
-    "PACOPACOMAMA",
-    "MURAMURA",
-    "AVMOO",
-    "FreeJavBT",
-    "JavDB",
-]
 
 
 class App(tk.Tk):

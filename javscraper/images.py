@@ -51,16 +51,25 @@ def normalize_metadata_image_urls(metadata: MovieMetadata) -> None:
     metadata.preview_images = normalized_previews
 
 
-def select_image_sources(metadata: MovieMetadata) -> ImageSources:
+def _ordered_unique(values: list[str | None]) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        text = normalize_image_url(value)
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def poster_image_candidates(metadata: MovieMetadata) -> list[str]:
     normalize_metadata_image_urls(metadata)
-    poster_url = metadata.cover_url
-    fanart_url = metadata.thumb_url or (metadata.preview_images[0] if metadata.preview_images else None) or metadata.cover_url
-    thumb_url = metadata.thumb_url or fanart_url
-    return ImageSources(
-        poster_url=poster_url,
-        fanart_url=fanart_url,
-        thumb_url=thumb_url,
-    )
+    preview = metadata.preview_images[0] if metadata.preview_images else None
+    return _ordered_unique([metadata.thumb_url, metadata.cover_url, preview])
+
+
+def landscape_image_candidates(metadata: MovieMetadata) -> list[str]:
+    normalize_metadata_image_urls(metadata)
+    preview = metadata.preview_images[0] if metadata.preview_images else None
+    return _ordered_unique([preview, metadata.cover_url, metadata.thumb_url])
 
 
 def should_crop_poster_from_fanart(code: str | None) -> bool:
@@ -77,6 +86,24 @@ def should_crop_poster_from_fanart(code: str | None) -> bool:
     if prefix in _SPECIAL_PREFIXES:
         return False
     return True
+
+
+def select_image_sources(metadata: MovieMetadata) -> ImageSources:
+    normalize_metadata_image_urls(metadata)
+    landscape_candidates = landscape_image_candidates(metadata)
+    fanart_url = landscape_candidates[0] if landscape_candidates else None
+    if should_crop_poster_from_fanart(metadata.code):
+        poster_candidates = poster_image_candidates(metadata)
+        poster_url = poster_candidates[0] if poster_candidates else fanart_url
+        thumb_url = fanart_url
+    else:
+        poster_url = fanart_url
+        thumb_url = fanart_url
+    return ImageSources(
+        poster_url=poster_url,
+        fanart_url=fanart_url,
+        thumb_url=thumb_url,
+    )
 
 
 def image_candidates_present(metadata: MovieMetadata) -> bool:

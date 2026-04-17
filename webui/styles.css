@@ -265,6 +265,24 @@ select {
   gap: 10px;
 }
 
+.provider-group {
+  display: grid;
+  gap: 2px;
+  padding: 4px 2px 0;
+}
+
+.provider-group-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+
+.provider-group-tip {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .provider-item {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -294,6 +312,12 @@ select {
 .provider-actions button {
   padding: 6px 8px;
   font-size: 12px;
+}
+
+.provider-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
 }
 
 .table-wrap {

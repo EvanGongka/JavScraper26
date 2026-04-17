@@ -7,7 +7,15 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlparse
 
-from javscraper.images import crop_to_poster, download_image_bytes, is_portrait_image, select_image_sources, should_crop_poster_from_fanart
+from javscraper.images import (
+    crop_to_poster,
+    download_image_bytes,
+    is_portrait_image,
+    landscape_image_candidates,
+    poster_image_candidates,
+    select_image_sources,
+    should_crop_poster_from_fanart,
+)
 from javscraper.models import MovieMetadata, ScanEntry
 from javscraper.network import HttpClient
 
@@ -158,6 +166,29 @@ def _write_poster(entry: ScanEntry, folder: Path, fanart_bytes: bytes | None, on
     return poster_target
 
 
+def _download_best_portrait_image(
+    client: HttpClient,
+    entry: ScanEntry,
+    folder: Path,
+    filename: str,
+    candidates: list[str | None],
+    on_log=None,
+) -> tuple[Path | None, bytes | None, str | None]:
+    seen: set[str] = set()
+    for url in candidates:
+        if not is_downloadable_url(url) or url in seen:
+            continue
+        seen.add(url)
+        path, image_bytes = _download_image(client, entry.code, url, folder, filename, on_log)
+        if path is None or image_bytes is None:
+            continue
+        if is_portrait_image(image_bytes):
+            return path, image_bytes, url
+        if on_log:
+            on_log(f"[{entry.code}] {filename} 候选为横图，继续尝试下一候选: {url}")
+    return None, None, None
+
+
 def _download_best_landscape_image(
     client: HttpClient,
     entry: ScanEntry,
@@ -186,6 +217,30 @@ def _download_best_landscape_image(
     return None, None, None
 
 
+def _write_best_poster(
+    client: HttpClient,
+    entry: ScanEntry,
+    metadata: MovieMetadata,
+    folder: Path,
+    fanart_bytes: bytes | None,
+    on_log=None,
+) -> Path | None:
+    if should_crop_poster_from_fanart(entry.code):
+        poster_path, _, poster_url = _download_best_portrait_image(
+            client,
+            entry,
+            folder,
+            "poster.jpg",
+            poster_image_candidates(metadata),
+            on_log,
+        )
+        if poster_path is not None and poster_url:
+            if on_log:
+                on_log(f"[{entry.code}] 已优先使用原生竖图作为 poster: {poster_url}")
+            return poster_path
+    return _write_poster(entry, folder, fanart_bytes, on_log)
+
+
 def save_result(client: HttpClient, output_root: Path, entry: ScanEntry, metadata: MovieMetadata, on_log=None) -> dict:
     folder = build_movie_folder(output_root, metadata)
     move_video_files(entry, folder, metadata.code, on_log)
@@ -199,11 +254,7 @@ def save_result(client: HttpClient, output_root: Path, entry: ScanEntry, metadat
         entry,
         folder,
         "fanart.jpg",
-        [
-            metadata.thumb_url,
-            metadata.preview_images[0] if metadata.preview_images else None,
-            metadata.cover_url,
-        ],
+        landscape_image_candidates(metadata),
         on_log,
     )
 
@@ -214,12 +265,7 @@ def save_result(client: HttpClient, output_root: Path, entry: ScanEntry, metadat
         if on_log:
             on_log(f"[{entry.code}] 复制 thumb: {thumb_path}")
 
-    poster_path = _write_poster(
-        entry,
-        folder,
-        fanart_bytes,
-        on_log,
-    )
+    poster_path = _write_best_poster(client, entry, metadata, folder, fanart_bytes, on_log)
     extrafanart_paths = download_preview_images(client, metadata, folder, on_log)
 
     return {
