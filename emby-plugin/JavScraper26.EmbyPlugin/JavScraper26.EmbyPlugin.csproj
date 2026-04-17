@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>JavScraper26.EmbyPlugin</AssemblyName>
+    <RootNamespace>JavScraper26.EmbyPlugin</RootNamespace>
+    <PackageId>JavScraper26.EmbyPlugin</PackageId>
+    <Authors>javScraper26</Authors>
+    <Description>Emby plugin for javScraper26 service mode.</Description>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.80" />
+    <PackageReference Include="System.Memory" Version="4.5.5" />
+  </ItemGroup>
+
+  <Target Name="Zip" AfterTargets="PostBuildEvent" Condition="'$(Configuration)'=='Release'">
+    <ItemGroup>
+      <FilesToDelete Include="$(BaseOutputPath)Emby.JavScraper26*.zip" />
+      <TempZipDirectory Include="$(OutputPath)output" />
+    </ItemGroup>
+    <Delete Files="@(FilesToDelete)" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="@(TempZipDirectory)" />
+    <ZipDirectory SourceDirectory="@(TempZipDirectory)" DestinationFile="$(BaseOutputPath)Emby.JavScraper26@v$(Version).zip" />
+    <RemoveDir Directories="@(TempZipDirectory)" />
+  </Target>
+</Project>
