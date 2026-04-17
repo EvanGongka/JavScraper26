@@ -12,7 +12,7 @@ from javscraper.images import (
     download_image_bytes,
     is_portrait_image,
     landscape_image_candidates,
-    poster_image_candidates,
+    select_best_regular_poster_for_metadata,
     select_image_sources,
     should_crop_poster_from_fanart,
 )
@@ -156,37 +156,14 @@ def _write_poster(entry: ScanEntry, folder: Path, fanart_bytes: bytes | None, on
     if not fanart_bytes:
         return None
     if should_crop_poster_from_fanart(entry.code):
-        poster_target.write_bytes(crop_to_poster(fanart_bytes))
+        poster_target.write_bytes(fanart_bytes)
         if on_log:
-            on_log(f"[{entry.code}] 已根据 fanart 裁剪生成 poster: {poster_target}")
+            on_log(f"[{entry.code}] 已回退为 fanart/poster/thumb 三图同源: {poster_target}")
     else:
         poster_target.write_bytes(fanart_bytes)
         if on_log:
             on_log(f"[{entry.code}] 已复制 fanart 作为 poster: {poster_target}")
     return poster_target
-
-
-def _download_best_portrait_image(
-    client: HttpClient,
-    entry: ScanEntry,
-    folder: Path,
-    filename: str,
-    candidates: list[str | None],
-    on_log=None,
-) -> tuple[Path | None, bytes | None, str | None]:
-    seen: set[str] = set()
-    for url in candidates:
-        if not is_downloadable_url(url) or url in seen:
-            continue
-        seen.add(url)
-        path, image_bytes = _download_image(client, entry.code, url, folder, filename, on_log)
-        if path is None or image_bytes is None:
-            continue
-        if is_portrait_image(image_bytes):
-            return path, image_bytes, url
-        if on_log:
-            on_log(f"[{entry.code}] {filename} 候选为横图，继续尝试下一候选: {url}")
-    return None, None, None
 
 
 def _download_best_landscape_image(
@@ -226,18 +203,30 @@ def _write_best_poster(
     on_log=None,
 ) -> Path | None:
     if should_crop_poster_from_fanart(entry.code):
-        poster_path, _, poster_url = _download_best_portrait_image(
-            client,
-            entry,
-            folder,
-            "poster.jpg",
-            poster_image_candidates(metadata),
-            on_log,
-        )
-        if poster_path is not None and poster_url:
+        selected = select_best_regular_poster_for_metadata(client, metadata, on_log=on_log)
+        if selected is not None:
+            poster_path = folder / "poster.jpg"
+            if selected.mode == "regular_crop":
+                poster_path.write_bytes(crop_to_poster(selected.image_bytes))
+            else:
+                poster_path.write_bytes(selected.image_bytes)
             if on_log:
-                on_log(f"[{entry.code}] 已优先使用原生竖图作为 poster: {poster_url}")
+                if selected.mode == "regular_crop":
+                    on_log(
+                        f"[{entry.code}] 已使用可直接裁切横图生成 poster: {selected.url} ({selected.width}x{selected.height})"
+                    )
+                elif selected.meets_threshold:
+                    on_log(
+                        f"[{entry.code}] 已使用达标原生竖图作为 poster: {selected.url} ({selected.width}x{selected.height})"
+                    )
+                else:
+                    on_log(
+                        f"[{entry.code}] 所有原生竖图均低于阈值，已使用最高分辨率原生竖图作为 poster: "
+                        f"{selected.url} ({selected.width}x{selected.height})"
+                    )
             return poster_path
+        if on_log:
+            on_log(f"[{entry.code}] 未找到可直接裁切横图或原生竖图，回退为 fanart/poster/thumb 三图同源")
     return _write_poster(entry, folder, fanart_bytes, on_log)
 
 

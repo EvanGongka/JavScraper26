@@ -13,9 +13,12 @@ class HeyzoSupportTests(unittest.TestCase):
     def test_default_sites_insert_heyzo_family_before_onepondo(self) -> None:
         expected = [
             "JavBus",
+            "JAV321",
             "JavBooks",
             "AVBASE",
-            "JAV321",
+            "FreeJavBT",
+            "AVMOO",
+            "JavDB",
             "FC2",
             "Caribbeancom",
             "CaribbeancomPR",
@@ -25,9 +28,6 @@ class HeyzoSupportTests(unittest.TestCase):
             "10musume",
             "PACOPACOMAMA",
             "MURAMURA",
-            "AVMOO",
-            "FreeJavBT",
-            "JavDB",
         ]
         self.assertEqual(gui.DEFAULT_SITES, expected)
         self.assertEqual(webapp.DEFAULT_SITES, expected)

@@ -12,11 +12,11 @@ class ProviderCatalogItem:
 
 
 PROVIDER_CATALOG: tuple[ProviderCatalogItem, ...] = (
-    ProviderCatalogItem("JAV321", "regular", 10, "https://www.jav321.com"),
-    ProviderCatalogItem("JavBooks", "regular", 20, "https://javbooks.com"),
-    ProviderCatalogItem("AVBASE", "regular", 30, "https://www.avbase.net"),
-    ProviderCatalogItem("FreeJavBT", "regular", 40, "https://freejavbt.com"),
-    ProviderCatalogItem("JavBus", "regular", 50, "https://www.javbus.com"),
+    ProviderCatalogItem("JavBus", "regular", 10, "https://www.javbus.com"),
+    ProviderCatalogItem("JAV321", "regular", 20, "https://www.jav321.com"),
+    ProviderCatalogItem("JavBooks", "regular", 30, "https://javbooks.com"),
+    ProviderCatalogItem("AVBASE", "regular", 40, "https://www.avbase.net"),
+    ProviderCatalogItem("FreeJavBT", "regular", 50, "https://freejavbt.com"),
     ProviderCatalogItem("AVMOO", "regular", 60, "https://avmoo.website"),
     ProviderCatalogItem("JavDB", "regular", 70, "https://javdb.com"),
     ProviderCatalogItem("FC2", "special", 110, "https://adult.contents.fc2.com"),

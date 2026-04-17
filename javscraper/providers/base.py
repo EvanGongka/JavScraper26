@@ -12,6 +12,7 @@ class ProviderError(Exception):
 
 class Provider:
     site_name = "Provider"
+    stop_after_fanart_crop = False
 
     def __init__(self, client: HttpClient | None = None) -> None:
         self.client = client or HttpClient()

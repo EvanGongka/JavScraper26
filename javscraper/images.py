@@ -11,6 +11,7 @@ from javscraper.models import MovieMetadata
 from javscraper.network import HttpClient
 
 POSTER_RATIO = 2.0 / 3.0
+POSTER_MIN_HEIGHT = 480
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,27 @@ class ImageSources:
     poster_url: str | None
     fanart_url: str | None
     thumb_url: str | None
+
+
+@dataclass(frozen=True)
+class SelectedNativePoster:
+    url: str
+    image_bytes: bytes
+    media_type: str
+    width: int
+    height: int
+    meets_threshold: bool
+
+
+@dataclass(frozen=True)
+class SelectedRegularPoster:
+    url: str
+    image_bytes: bytes
+    media_type: str
+    width: int
+    height: int
+    mode: str
+    meets_threshold: bool = False
 
 
 _REGULAR_CODE_RE = re.compile(r"^[A-Z]{2,10}-\d{2,6}[A-Z]?$")
@@ -66,10 +88,50 @@ def poster_image_candidates(metadata: MovieMetadata) -> list[str]:
     return _ordered_unique([metadata.thumb_url, metadata.cover_url, preview])
 
 
+def guess_dmm_poster_crop_url(code: str | None) -> str | None:
+    text = (code or "").strip().upper()
+    match = re.fullmatch(r"([A-Z0-9]{2,10})-(\d{2,6})([A-Z]?)", text)
+    if not match:
+        return None
+    prefix, digits, suffix = match.groups()
+    slug = f"{prefix.lower()}{int(digits):05d}{suffix.lower()}"
+    return f"https://pics.dmm.co.jp/digital/video/{slug}/{slug}pl.jpg"
+
+
+def javbus_poster_crop_url(metadata: MovieMetadata) -> str | None:
+    cover_url = normalize_image_url(metadata.cover_url)
+    if not cover_url:
+        return None
+    if "javbus.com/pics/cover/" in cover_url or "seedmm.help/pics/cover/" in cover_url:
+        return cover_url.replace("https://www.seedmm.help", "https://www.javbus.com")
+    if metadata.filled_by.get("cover_url") == "JavBus":
+        return cover_url
+    return None
+
+
+def native_poster_candidate_urls(metadata: MovieMetadata) -> list[str]:
+    normalize_metadata_image_urls(metadata)
+    metadata.add_native_poster_urls(_ordered_unique(metadata.native_poster_urls))
+    if metadata.native_poster_urls:
+        return _ordered_unique(metadata.native_poster_urls)
+    return poster_image_candidates(metadata)
+
+
 def landscape_image_candidates(metadata: MovieMetadata) -> list[str]:
     normalize_metadata_image_urls(metadata)
     preview = metadata.preview_images[0] if metadata.preview_images else None
     return _ordered_unique([preview, metadata.cover_url, metadata.thumb_url])
+
+
+def preferred_regular_crop_urls(metadata: MovieMetadata) -> list[str]:
+    return _ordered_unique(
+        [
+            metadata.locked_regular_poster_url,
+            guess_dmm_poster_crop_url(metadata.code),
+            *metadata.regular_poster_crop_urls,
+            javbus_poster_crop_url(metadata),
+        ]
+    )
 
 
 def should_crop_poster_from_fanart(code: str | None) -> bool:
@@ -93,7 +155,7 @@ def select_image_sources(metadata: MovieMetadata) -> ImageSources:
     landscape_candidates = landscape_image_candidates(metadata)
     fanart_url = landscape_candidates[0] if landscape_candidates else None
     if should_crop_poster_from_fanart(metadata.code):
-        poster_candidates = poster_image_candidates(metadata)
+        poster_candidates = native_poster_candidate_urls(metadata)
         poster_url = poster_candidates[0] if poster_candidates else fanart_url
         thumb_url = fanart_url
     else:
@@ -141,6 +203,149 @@ def classify_image_orientation(image_bytes: bytes) -> str:
     if width > height:
         return "landscape"
     return "square"
+
+
+def select_best_native_poster(
+    client: HttpClient,
+    candidates: list[str | None],
+    *,
+    min_height: int = POSTER_MIN_HEIGHT,
+    on_log=None,
+    code: str | None = None,
+) -> SelectedNativePoster | None:
+    best_fallback: SelectedNativePoster | None = None
+    seen: set[str] = set()
+    for url in candidates:
+        normalized = normalize_image_url(url)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        try:
+            image_bytes, media_type = download_image_bytes(client, normalized)
+        except Exception as exc:
+            if on_log and code:
+                on_log(f"[{code}] 原生 poster 候选下载失败: {normalized} ({exc})")
+            continue
+        width, height = image_size(image_bytes)
+        if height <= width:
+            continue
+        selected = SelectedNativePoster(
+            url=normalized,
+            image_bytes=image_bytes,
+            media_type=media_type,
+            width=width,
+            height=height,
+            meets_threshold=height >= min_height,
+        )
+        if selected.meets_threshold:
+            return selected
+        if best_fallback is None:
+            best_fallback = selected
+            continue
+        if (selected.height, selected.width) > (best_fallback.height, best_fallback.width):
+            best_fallback = selected
+    return best_fallback
+
+
+def select_best_native_poster_for_metadata(
+    client: HttpClient,
+    metadata: MovieMetadata,
+    *,
+    min_height: int = POSTER_MIN_HEIGHT,
+    on_log=None,
+) -> SelectedNativePoster | None:
+    return select_best_native_poster(
+        client,
+        native_poster_candidate_urls(metadata),
+        min_height=min_height,
+        on_log=on_log,
+        code=metadata.code,
+    )
+
+
+def _select_landscape_crop_source(
+    client: HttpClient,
+    candidates: list[str | None],
+    *,
+    mode: str,
+    on_log=None,
+    code: str | None = None,
+) -> SelectedRegularPoster | None:
+    seen: set[str] = set()
+    for url in candidates:
+        normalized = normalize_image_url(url)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        try:
+            image_bytes, media_type = download_image_bytes(client, normalized)
+        except Exception as exc:
+            if on_log and code:
+                on_log(f"[{code}] {mode} 候选下载失败: {normalized} ({exc})")
+            continue
+        width, height = image_size(image_bytes)
+        if width <= height:
+            continue
+        return SelectedRegularPoster(
+            url=normalized,
+            image_bytes=image_bytes,
+            media_type=media_type,
+            width=width,
+            height=height,
+            mode=mode,
+        )
+    return None
+
+
+def select_best_regular_poster_for_metadata(
+    client: HttpClient,
+    metadata: MovieMetadata,
+    *,
+    min_height: int = POSTER_MIN_HEIGHT,
+    on_log=None,
+) -> SelectedRegularPoster | None:
+    crop_source = _select_landscape_crop_source(
+        client,
+        preferred_regular_crop_urls(metadata),
+        mode="regular_crop",
+        on_log=on_log,
+        code=metadata.code,
+    )
+    if crop_source is not None:
+        return crop_source
+
+    native = select_best_native_poster_for_metadata(
+        client,
+        metadata,
+        min_height=min_height,
+        on_log=on_log,
+    )
+    if native is None:
+        return None
+    return SelectedRegularPoster(
+        url=native.url,
+        image_bytes=native.image_bytes,
+        media_type=native.media_type,
+        width=native.width,
+        height=native.height,
+        mode="native",
+        meets_threshold=native.meets_threshold,
+    )
+
+
+def select_dmm_regular_poster_for_code(
+    client: HttpClient,
+    code: str | None,
+    *,
+    on_log=None,
+) -> SelectedRegularPoster | None:
+    return _select_landscape_crop_source(
+        client,
+        [guess_dmm_poster_crop_url(code)],
+        mode="regular_crop",
+        on_log=on_log,
+        code=code,
+    )
 
 
 def crop_to_poster(image_bytes: bytes, *, ratio: float = POSTER_RATIO, quality: int = 90) -> bytes:

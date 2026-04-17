@@ -39,8 +39,23 @@ class MovieMetadata:
     actresses: list[str] = field(default_factory=list)
     genres: list[str] = field(default_factory=list)
     preview_images: list[str] = field(default_factory=list)
+    native_poster_urls: list[str] = field(default_factory=list)
+    regular_poster_crop_urls: list[str] = field(default_factory=list)
+    locked_regular_poster_url: str | None = None
     filled_by: dict[str, str] = field(default_factory=dict)
     providers: list[str] = field(default_factory=list)
+
+    def add_native_poster_urls(self, urls: list[str]) -> None:
+        for url in urls:
+            text = url.strip()
+            if text and text not in self.native_poster_urls:
+                self.native_poster_urls.append(text)
+
+    def add_regular_poster_crop_urls(self, urls: list[str]) -> None:
+        for url in urls:
+            text = url.strip()
+            if text and text not in self.regular_poster_crop_urls:
+                self.regular_poster_crop_urls.append(text)
 
     def merge_missing(self, other: "MovieMetadata", provider: str) -> None:
         scalar_fields = (

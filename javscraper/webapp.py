@@ -28,7 +28,7 @@ from javscraper.images import (
     download_image_bytes,
     is_portrait_image,
     landscape_image_candidates,
-    poster_image_candidates,
+    select_best_regular_poster_for_metadata,
     should_crop_poster_from_fanart,
 )
 from javscraper.network import HttpClient
@@ -233,18 +233,6 @@ def _fetch_best_landscape_image(urls: list[str | None], proxy: ProxyConfig) -> t
     raise HTTPException(status_code=404, detail="该条目没有可用图片")
 
 
-def _fetch_best_portrait_image(urls: list[str | None], proxy: ProxyConfig) -> tuple[bytes, str]:
-    seen: set[str] = set()
-    for url in urls:
-        if not url or url in seen:
-            continue
-        seen.add(url)
-        content, media_type = _fetch_remote_image(url, proxy)
-        if is_portrait_image(content):
-            return content, media_type
-    raise HTTPException(status_code=404, detail="该条目没有可用图片")
-
-
 @app.middleware("http")
 async def service_request_logger(request: Request, call_next):
     should_log = request.url.path.startswith("/emby-api/") and request.url.path not in IGNORED_SERVICE_LOG_PATHS
@@ -443,20 +431,16 @@ def emby_movie_image(
 
     if image_type == "primary":
         if should_crop_poster_from_fanart(resolved_image.metadata.code):
-            try:
-                content, media_type = _fetch_best_portrait_image(
-                    poster_image_candidates(resolved_image.metadata),
-                    effective_proxy,
-                )
-                return Response(content=content, media_type=media_type)
-            except HTTPException:
-                pass
+            client = HttpClient(timeout=20, proxy_url=effective_proxy.url)
+            selected = select_best_regular_poster_for_metadata(client, resolved_image.metadata)
+            if selected is not None:
+                if selected.mode == "regular_crop":
+                    return Response(content=crop_to_poster(selected.image_bytes), media_type="image/jpeg")
+                return Response(content=selected.image_bytes, media_type=selected.media_type)
         fanart_bytes, media_type = _fetch_best_landscape_image(
             landscape_image_candidates(resolved_image.metadata),
             effective_proxy,
         )
-        if should_crop_poster_from_fanart(resolved_image.metadata.code):
-            return Response(content=crop_to_poster(fanart_bytes), media_type="image/jpeg")
         return Response(content=fanart_bytes, media_type=media_type)
 
     if image_type in {"thumb", "backdrop"}:

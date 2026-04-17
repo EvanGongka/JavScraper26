@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from PIL import Image
 
 from javscraper.emby_service import ProxyConfig, ResolvedImage
-from javscraper.images import ImageSources, image_size
+from javscraper.images import ImageSources, SelectedRegularPoster, image_size
 from javscraper.models import MovieMetadata
 from javscraper.webapp import (
     EMBY_SERVICE,
@@ -108,7 +108,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.media_type, "image/jpeg")
         self.assertEqual(response.body, b"jpeg-bytes")
 
-    def test_primary_image_crops_when_cover_is_not_portrait(self):
+    def test_primary_image_falls_back_to_shared_fanart_when_no_regular_poster_source_exists(self):
         resolved = ResolvedImage(
             image_type="primary",
             url="https://example.com/fanart.jpg",
@@ -120,13 +120,80 @@ class WebAppTests(unittest.TestCase):
             ),
         )
         with patch("javscraper.webapp.EMBY_SERVICE.get_image", return_value=resolved), patch(
-            "javscraper.webapp._fetch_remote_image",
+            "javscraper.webapp.select_best_regular_poster_for_metadata",
+            return_value=None,
+        ), patch(
+            "javscraper.webapp._fetch_best_landscape_image",
             return_value=(make_image_bytes((1280, 720)), "image/jpeg"),
         ):
             response = emby_movie_image("primary", "Success", "ABP-123")
 
         self.assertEqual(response.media_type, "image/jpeg")
-        self.assertEqual(image_size(response.body), (480, 720))
+        self.assertEqual(image_size(response.body), (1280, 720))
+
+    def test_primary_image_crops_selected_regular_crop_source(self):
+        selected = SelectedRegularPoster(
+            url="https://pics.dmm.co.jp/digital/video/abp00123/abp00123pl.jpg",
+            image_bytes=make_image_bytes((1200, 800)),
+            media_type="image/jpeg",
+            width=1200,
+            height=800,
+            mode="regular_crop",
+        )
+        resolved = ResolvedImage(
+            image_type="primary",
+            url="https://example.com/fanart.jpg",
+            metadata=MovieMetadata(
+                code="ABP-123",
+                title="Movie",
+            ),
+            sources=ImageSources(
+                poster_url="https://example.com/poster.jpg",
+                fanart_url="https://example.com/fanart.jpg",
+                thumb_url="https://example.com/fanart.jpg",
+            ),
+        )
+        with patch("javscraper.webapp.EMBY_SERVICE.get_image", return_value=resolved), patch(
+            "javscraper.webapp.select_best_regular_poster_for_metadata",
+            return_value=selected,
+        ):
+            response = emby_movie_image("primary", "Success", "ABP-123")
+
+        self.assertEqual(response.media_type, "image/jpeg")
+        self.assertEqual(image_size(response.body), (533, 800))
+
+    def test_primary_image_returns_highest_resolution_native_poster_when_all_are_below_threshold(self):
+        selected = SelectedRegularPoster(
+            url="https://example.com/better-low.jpg",
+            image_bytes=make_image_bytes((320, 470)),
+            media_type="image/jpeg",
+            width=320,
+            height=470,
+            mode="native",
+            meets_threshold=False,
+        )
+        resolved = ResolvedImage(
+            image_type="primary",
+            url="https://example.com/fanart.jpg",
+            metadata=MovieMetadata(
+                code="ABP-123",
+                title="Movie",
+                native_poster_urls=["https://example.com/low.jpg", "https://example.com/better-low.jpg"],
+            ),
+            sources=ImageSources(
+                poster_url="https://example.com/low.jpg",
+                fanart_url="https://example.com/fanart.jpg",
+                thumb_url="https://example.com/fanart.jpg",
+            ),
+        )
+        with patch("javscraper.webapp.EMBY_SERVICE.get_image", return_value=resolved), patch(
+            "javscraper.webapp.select_best_regular_poster_for_metadata",
+            return_value=selected,
+        ):
+            response = emby_movie_image("primary", "Success", "ABP-123")
+
+        self.assertEqual(response.media_type, "image/jpeg")
+        self.assertEqual(image_size(response.body), (320, 470))
 
     def test_primary_image_returns_same_wide_image_for_special_codes(self):
         wide = make_image_bytes((1280, 720))
@@ -141,7 +208,7 @@ class WebAppTests(unittest.TestCase):
             ),
         )
         with patch("javscraper.webapp.EMBY_SERVICE.get_image", return_value=resolved), patch(
-            "javscraper.webapp._fetch_remote_image",
+            "javscraper.webapp._fetch_best_landscape_image",
             return_value=(wide, "image/jpeg"),
         ):
             response = emby_movie_image("primary", "Success", "HEYZO-0841")

@@ -10,6 +10,7 @@ from typing import Iterable
 from fastapi import HTTPException
 
 from javscraper.images import ImageSources, select_image_sources
+from javscraper.metadata_resolution import resolve_metadata_from_providers
 from javscraper.models import MovieMetadata
 from javscraper.network import HttpClient, build_proxy_url
 from javscraper.providers import PROVIDER_CLASSES
@@ -236,36 +237,27 @@ class EmbyMovieService:
     def fetch_from_providers(self, code: str, *, requested_proxy: ProxyConfig | None) -> ResolvedMovie | None:
         proxy = self.effective_proxy(requested_proxy)
         client = HttpClient(proxy_url=proxy.url)
-        for provider_name in self.provider_names:
-            provider_cls = PROVIDER_CLASSES[provider_name]
-            provider_instance = provider_cls(client)
-            self.log_store.add("INFO", "emby-resolve", f"[{code}] 尝试站点: {provider_name}")
-            try:
-                metadata = provider_instance.fetch(code)
-            except ProviderError as exc:
-                self.log_store.add("WARN", "emby-resolve", f"[{code}] {provider_name} 失败: {exc}")
-                continue
-            except Exception as exc:  # pragma: no cover - defensive
-                self.log_store.add("ERROR", "emby-resolve", f"[{code}] {provider_name} 异常: {exc}")
-                continue
-
-            if not metadata.is_usable:
-                self.log_store.add("WARN", "emby-resolve", f"[{code}] {provider_name} 命中但字段不完整")
-                continue
-
-            if provider_name not in metadata.providers:
-                metadata.providers.append(provider_name)
-            resolved = ResolvedMovie(
-                provider=provider_name,
-                provider_item_id=metadata.code,
-                code=metadata.code,
-                metadata=metadata,
-            )
-            with self._cache_lock:
-                self._metadata_cache[(resolved.provider, resolved.provider_item_id)] = metadata
-            self.log_store.add("INFO", "emby-resolve", f"[{code}] 命中站点: {provider_name}")
-            return resolved
-        return None
+        providers = [PROVIDER_CLASSES[name](client) for name in self.provider_names]
+        resolved_metadata = resolve_metadata_from_providers(
+            code,
+            providers,
+            probe_client=client,
+            on_info=lambda message: self.log_store.add("INFO", "emby-resolve", message),
+            on_warn=lambda message: self.log_store.add("WARN", "emby-resolve", message),
+            on_error=lambda message: self.log_store.add("ERROR", "emby-resolve", message),
+        )
+        if resolved_metadata is None:
+            return None
+        metadata = resolved_metadata.metadata
+        resolved = ResolvedMovie(
+            provider=resolved_metadata.provider,
+            provider_item_id=metadata.code,
+            code=metadata.code,
+            metadata=metadata,
+        )
+        with self._cache_lock:
+            self._metadata_cache[(resolved.provider, resolved.provider_item_id)] = metadata
+        return resolved
 
     @staticmethod
     def serialize_movie(resolved: ResolvedMovie) -> dict[str, object]:

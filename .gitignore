@@ -22,6 +22,8 @@ metatube
 emby-plugin/**/bin/
 emby-plugin/**/obj/
 
+.runtime
+
 *.spec
 
 PROJECT_CONTEXT.md
