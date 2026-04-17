@@ -2,13 +2,35 @@
 
 一个本地运行的 JAV 元数据刮削器，界面使用浏览器页面呈现，抓取核心仍然是 Python。
 
-当前内置的五个站点：
+现在支持两种运行模式：
+
+- `普通 WebUI`
+  - 扫描目录、批量刮削、整理输出
+- `Emby 服务模式`
+  - 作为 Emby 插件的元数据后端，提供电影元数据与图片接口，并显示服务日志
+
+仓库内也已经包含 Emby 插件子项目：
+
+- `emby-plugin/JavScraper26.EmbyPlugin/`
+
+当前内置站点：
 
 - `JavBus`
-- `JavDB`
+- `JavBooks`
+- `AVBASE`
+- `JAV321`
+- `FC2`
+- `Caribbeancom`
+- `CaribbeancomPR`
+- `HEYZO`
+- `HeyDouga`
+- `1Pondo`
+- `10musume`
+- `PACOPACOMAMA`
+- `MURAMURA`
 - `AVMOO`
 - `FreeJavBT`
-- `JavBooks`
+- `JavDB`
 
 ## 运行
 
@@ -20,7 +42,25 @@ pip install -r requirements.txt
 python3 app.py
 ```
 
+启动后访问根路径 `/` 会先进入模式选择页。
+
+如果你想直接进入某种模式：
+
+```bash
+JAVSCRAPER_MODE=webui python3 app.py
+JAVSCRAPER_MODE=service JAVSCRAPER_PORT=8765 python3 app.py
+```
+
 ## Web 界面功能
+
+### 模式选择页
+
+- 根路径 `/` 现在是模式选择页
+- 可进入：
+  - 普通 WebUI：`/webui`
+  - Emby 服务模式：`/service`
+
+### 普通 WebUI
 
 - 选择待扫描目录
 - 选择结果输出目录
@@ -28,6 +68,15 @@ python3 app.py
 - 通过上移/下移编排站点执行顺序
 - 按顺序逐站刮削
 - 在浏览器界面中查看日志和逐条状态
+
+### Emby 服务模式
+
+- 提供健康检查：`/emby-api/v1/health`
+- 提供电影解析：`/emby-api/v1/movies/resolve`
+- 提供电影详情：`/emby-api/v1/movies/{provider}/{id}`
+- 提供图片接口：`/emby-api/v1/images/{primary|thumb|backdrop}/{provider}/{id}`
+- 展示最近 Emby API 请求和抓取日志
+- 第一版只支持 Emby `Movie library`
 
 ## 界面截图
 
@@ -100,6 +149,7 @@ FreeJavBT/
 - `poster.jpg` 目前直接由 `fanart.jpg` 复制生成，还没有接入单独裁剪逻辑
 - `extrafanart/` 会尽量下载站点提供的预览图，失败的单张会自动跳过
 - 没有女优信息时会落到 `#未知女优`
+- Emby 服务模式下，插件请求级代理参数优先于后端默认代理环境变量
 
 ## 本地测试
 
@@ -165,10 +215,62 @@ dist/javScraper26.app
 
 - `build/` 目录只是 PyInstaller 的中间构建目录，不要直接运行里面的可执行文件
 - 实际应运行 `dist/javScraper26.app`，或者目录版产物 `dist/javScraper26/javScraper26`
-- 新版应用启动后，会在本机启动一个本地服务，并自动打开浏览器界面
+- 新版应用启动后，会先进入模式选择页
 - 当前打包脚本会优先使用 `/usr/bin/python3`
 - 脚本会把 `webui/` 静态页面一起打进应用包
 - 另外还会生成一个目录版产物：`dist/javScraper26/`
+
+如果你想在无头场景下直接跑服务模式，可以设置：
+
+```bash
+JAVSCRAPER_MODE=service
+JAVSCRAPER_PORT=8765
+JAVSCRAPER_DISABLE_BROWSER=1
+```
+
+## Emby 插件
+
+仓库内已包含 Emby 插件源码：
+
+```text
+emby-plugin/JavScraper26.EmbyPlugin/
+```
+
+本机编译命令：
+
+```bash
+dotnet build -c Release emby-plugin/JavScraper26.EmbyPlugin/JavScraper26.EmbyPlugin.csproj
+```
+
+当前 Release 安装包：
+
+```text
+emby-plugin/JavScraper26.EmbyPlugin/bin/Emby.JavScraper26@v0.1.0.zip
+```
+
+当前 Release DLL：
+
+```text
+emby-plugin/JavScraper26.EmbyPlugin/bin/Release/net6.0/JavScraper26.EmbyPlugin.dll
+```
+
+重要说明：
+
+- Emby 4.9.3.0 当前运行在 `.NET 6`
+- 插件也必须编译为 `net6.0`
+- 如果插件编译成 `net8.0`，Emby 启动日志会报 `System.Runtime, Version=8.0.0.0` 无法加载
+
+本机 Emby 实际目录：
+
+```text
+/Users/gongkeao/.config/emby-server/
+```
+
+插件目录：
+
+```text
+/Users/gongkeao/.config/emby-server/plugins/
+```
 
 ## 打包 Windows EXE
 
