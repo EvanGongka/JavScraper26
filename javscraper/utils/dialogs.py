@@ -60,7 +60,10 @@ def _pick_directory_tk(title: str) -> str | None:
 def pick_directory(title: str) -> str | None:
     system = platform.system().lower()
     if system == "darwin":
-        return _pick_directory_macos(title) or _pick_directory_tk(title)
+        # Avoid tkinter fallback on macOS: this endpoint runs inside FastAPI's
+        # worker thread, and initializing Tk from a non-main thread can abort
+        # the process after the native dialog is cancelled.
+        return _pick_directory_macos(title)
     if system == "windows":
-        return _pick_directory_windows(title) or _pick_directory_tk(title)
+        return _pick_directory_windows(title)
     return _pick_directory_tk(title) or os.getcwd()
