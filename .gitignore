@@ -26,4 +26,6 @@ emby-plugin/**/obj/
 
 *.spec
 
+scripts/manage_javscraper_lan_server.sh
+
 PROJECT_CONTEXT.md

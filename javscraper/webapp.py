@@ -508,7 +508,7 @@ def emby_movie_image(
 
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
+        sock.bind((_launch_host(), 0))
         return sock.getsockname()[1]
 
 
@@ -529,14 +529,20 @@ def _should_open_browser() -> bool:
     return os.getenv("JAVSCRAPER_DISABLE_BROWSER", "").lower() not in {"1", "true", "yes", "on"}
 
 
+def _launch_host() -> str:
+    return os.getenv("JAVSCRAPER_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+
 def launch() -> None:
+    host = _launch_host()
     port = _launch_port()
-    url = f"http://127.0.0.1:{port}"
+    browser_host = "127.0.0.1" if host == "0.0.0.0" else host
+    url = f"http://{browser_host}:{port}"
     if _should_open_browser():
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     uvicorn.run(
         app,
-        host="127.0.0.1",
+        host=host,
         port=port,
         log_level="warning",
         access_log=False,

@@ -25,6 +25,7 @@ from javscraper.webapp import (
     emby_recent_logs,
     emby_resolve_movie,
     index,
+    launch,
     service_page,
     webui_page,
 )
@@ -90,6 +91,21 @@ class WebAppTests(unittest.TestCase):
             response = index()
         self.assertEqual(response.status_code, 307)
         self.assertEqual(response.headers["location"], "/service")
+
+    def test_launch_uses_configured_host(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "JAVSCRAPER_HOST": "0.0.0.0",
+                "JAVSCRAPER_PORT": "8765",
+                "JAVSCRAPER_DISABLE_BROWSER": "1",
+            },
+            clear=False,
+        ), patch("javscraper.webapp.uvicorn.run") as mock_run:
+            launch()
+
+        self.assertEqual(mock_run.call_args.kwargs["host"], "0.0.0.0")
+        self.assertEqual(mock_run.call_args.kwargs["port"], 8765)
 
     def test_emby_api_routes(self):
         with patch.dict("javscraper.emby_service.PROVIDER_CLASSES", {"Success": SuccessProvider}, clear=False):
