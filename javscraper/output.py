@@ -39,9 +39,19 @@ def actress_folder_name(metadata: MovieMetadata) -> str:
     return "#未知女优"
 
 
+def format_nfo_title(metadata: MovieMetadata) -> str:
+    prefix = f"【{metadata.code}】"
+    title = (metadata.title or "").strip()
+    if not title:
+        return prefix
+    if title.startswith(prefix):
+        return title
+    return f"{prefix}{title}"
+
+
 def write_nfo(metadata: MovieMetadata, folder: Path) -> Path:
     root = ET.Element("movie")
-    ET.SubElement(root, "title").text = metadata.title or metadata.code
+    ET.SubElement(root, "title").text = format_nfo_title(metadata)
     ET.SubElement(root, "originaltitle").text = metadata.original_title or metadata.title or metadata.code
     ET.SubElement(root, "sorttitle").text = metadata.code
     ET.SubElement(root, "uniqueid", attrib={"type": "jav", "default": "true"}).text = metadata.code

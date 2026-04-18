@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest.mock import Mock
 
 from javscraper.models import MovieMetadata
-from javscraper.output import download_cover, download_preview_images, is_downloadable_url
+from javscraper.output import download_cover, download_preview_images, format_nfo_title, is_downloadable_url, write_nfo
 
 
 class DummyClient:
@@ -36,6 +37,28 @@ class DummyClient:
 
 
 class OutputResilienceTests(unittest.TestCase):
+    def test_format_nfo_title_prefixes_code(self) -> None:
+        metadata = MovieMetadata(code="MIDA-574", title="sample title")
+        self.assertEqual(format_nfo_title(metadata), "【MIDA-574】sample title")
+
+    def test_format_nfo_title_does_not_duplicate_prefix(self) -> None:
+        metadata = MovieMetadata(code="MIDA-574", title="【MIDA-574】sample title")
+        self.assertEqual(format_nfo_title(metadata), "【MIDA-574】sample title")
+
+    def test_write_nfo_uses_prefixed_title_and_preserves_original_title(self) -> None:
+        metadata = MovieMetadata(
+            code="MIDA-574",
+            title="「もうこれで最後…ねッ？」",
+            original_title="Original Title",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = write_nfo(metadata, Path(temp_dir))
+            root = ET.fromstring(path.read_bytes())
+
+        self.assertEqual(root.findtext("title"), "【MIDA-574】「もうこれで最後…ねッ？」")
+        self.assertEqual(root.findtext("originaltitle"), "Original Title")
+        self.assertEqual(root.findtext("sorttitle"), "MIDA-574")
+
     def test_is_downloadable_url_accepts_http_and_https_only(self) -> None:
         self.assertTrue(is_downloadable_url("https://example.com/a.jpg"))
         self.assertTrue(is_downloadable_url("http://example.com/a.jpg"))
