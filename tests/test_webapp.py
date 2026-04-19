@@ -114,9 +114,10 @@ class WebAppTests(unittest.TestCase):
             )
             self.assertEqual(resolve["results"][0]["provider"], "Success")
             self.assertEqual(resolve["results"][0]["providerItemId"], "ABP-123")
+            self.assertEqual(resolve["results"][0]["title"], "【ABP-123】Movie title")
 
             detail = emby_movie_detail("Success", "ABP-123")
-            self.assertEqual(detail["title"], "Movie title")
+            self.assertEqual(detail["title"], "【ABP-123】Movie title")
 
         health = emby_health()
         self.assertEqual(health["status"], "ok")

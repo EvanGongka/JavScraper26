@@ -13,6 +13,7 @@ from javscraper.images import ImageSources, select_image_sources
 from javscraper.metadata_resolution import resolve_metadata_from_providers
 from javscraper.models import MovieMetadata
 from javscraper.network import HttpClient, build_proxy_url
+from javscraper.output import format_nfo_title
 from javscraper.provider_catalog import provider_names_for_code
 from javscraper.providers import PROVIDER_CLASSES
 from javscraper.providers.base import ProviderError
@@ -280,7 +281,7 @@ class EmbyMovieService:
             "provider": resolved.provider,
             "providerItemId": resolved.provider_item_id,
             "number": metadata.code,
-            "title": metadata.title or metadata.code,
+            "title": format_nfo_title(metadata),
             "originalTitle": metadata.original_title or metadata.title or metadata.code,
             "summary": metadata.description or "",
             "releaseDate": metadata.release_date or "",

@@ -322,6 +322,57 @@ class EmbyServiceTests(unittest.TestCase):
         self.assertEqual(payload["thumbUrl"], "https://example.com/fanart.jpg")
         self.assertEqual(payload["fanartUrl"], "https://example.com/fanart.jpg")
 
+    def test_serialize_movie_prefixes_title_for_emby_api(self):
+        resolved = ResolvedMovie(
+            provider="Success",
+            provider_item_id="ABP-310",
+            code="ABP-310",
+            metadata=MovieMetadata(
+                code="ABP-310",
+                title="天然成分由来 輝月あんり汁120％",
+                original_title="Original title",
+                cover_url="https://example.com/poster.jpg",
+            ),
+        )
+
+        payload = self.service.serialize_movie(resolved)
+
+        self.assertEqual(payload["title"], "【ABP-310】天然成分由来 輝月あんり汁120％")
+        self.assertEqual(payload["originalTitle"], "Original title")
+
+    def test_serialize_movie_does_not_duplicate_prefixed_title(self):
+        resolved = ResolvedMovie(
+            provider="Success",
+            provider_item_id="ABP-310",
+            code="ABP-310",
+            metadata=MovieMetadata(
+                code="ABP-310",
+                title="【ABP-310】天然成分由来 輝月あんり汁120％",
+                cover_url="https://example.com/poster.jpg",
+            ),
+        )
+
+        payload = self.service.serialize_movie(resolved)
+
+        self.assertEqual(payload["title"], "【ABP-310】天然成分由来 輝月あんり汁120％")
+        self.assertEqual(payload["originalTitle"], "【ABP-310】天然成分由来 輝月あんり汁120％")
+
+    def test_serialize_movie_uses_prefixed_code_when_title_is_missing(self):
+        resolved = ResolvedMovie(
+            provider="Success",
+            provider_item_id="ABP-310",
+            code="ABP-310",
+            metadata=MovieMetadata(
+                code="ABP-310",
+                cover_url="https://example.com/poster.jpg",
+            ),
+        )
+
+        payload = self.service.serialize_movie(resolved)
+
+        self.assertEqual(payload["title"], "【ABP-310】")
+        self.assertEqual(payload["originalTitle"], "ABP-310")
+
     def test_get_image_uses_semantic_sources(self):
         with patch.dict("javscraper.emby_service.PROVIDER_CLASSES", {"Success": SuccessProvider}, clear=False):
             primary = self.service.get_image("primary", "Success", "ABP-123", requested_proxy=None)
