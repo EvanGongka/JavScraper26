@@ -9,7 +9,7 @@ from PIL import Image
 
 from javscraper.images import guess_dmm_poster_crop_url, image_size, select_image_sources, should_crop_poster_from_fanart
 from javscraper.models import MovieMetadata, ScanEntry
-from javscraper.output import save_result
+from javscraper.output import build_movie_folder, output_folder_name, save_result
 
 
 def make_image_bytes(size: tuple[int, int], color: tuple[int, int, int]) -> bytes:
@@ -294,9 +294,7 @@ class ImageOutputTests(unittest.TestCase):
             )
             self.assertEqual(Path(result["poster_file"]).read_bytes(), fanart_bytes)
 
-    def test_save_result_truncates_issue_style_long_movie_folder_name(self) -> None:
-        fanart_bytes = make_image_bytes((1280, 720), (40, 220, 40))
-        client = ImageClient({"https://example.com/fanart.jpg": fanart_bytes})
+    def test_build_movie_folder_truncates_issue_style_long_movie_folder_name(self) -> None:
         metadata = MovieMetadata(
             code="DVAJ-710",
             title=(
@@ -308,19 +306,19 @@ class ImageOutputTests(unittest.TestCase):
             thumb_url="https://example.com/fanart.jpg",
         )
 
+        movie_folder = output_folder_name(metadata)
+        self.assertLessEqual(len(movie_folder), 100)
+        self.assertLessEqual(len(movie_folder.encode("utf-8")), 255)
+        self.assertTrue(movie_folder.startswith("[DVAJ-710] "))
+        self.assertTrue(movie_folder.endswith("..."))
+
         with tempfile.TemporaryDirectory() as temp_dir:
-            source = Path(temp_dir) / "DVAJ-710.mp4"
-            source.write_bytes(b"video")
-            result = save_result(
-                client,
-                Path(temp_dir),
-                ScanEntry(code="DVAJ-710", files=[source]),
-                metadata,
-            )
-            movie_folder = Path(result["output_folder"]).name
+            folder = build_movie_folder(Path(temp_dir), metadata)
+            self.assertTrue(folder.exists())
+            self.assertTrue(folder.is_dir())
+            self.assertEqual(folder.name, movie_folder)
             self.assertLessEqual(len(movie_folder), 100)
             self.assertLessEqual(len(movie_folder.encode("utf-8")), 255)
-            self.assertTrue(movie_folder.startswith("[DVAJ-710] "))
 
     def test_special_code_uses_same_wide_image_for_all_three_outputs(self) -> None:
         wide_bytes = make_image_bytes((1280, 720), (80, 120, 180))
