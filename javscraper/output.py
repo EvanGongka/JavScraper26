@@ -21,16 +21,75 @@ from javscraper.network import HttpClient
 
 LogCallback = callable
 
+MAX_PATH_COMPONENT_CHARS = 100
+MAX_PATH_COMPONENT_UTF8_BYTES = 255
+TRUNCATION_SUFFIX = "..."
+WINDOWS_RESERVED_BASENAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{index}" for index in range(1, 10)),
+    *(f"LPT{index}" for index in range(1, 10)),
+}
+
 
 def safe_name(value: str) -> str:
+    value = _normalize_path_component_text(value)
+    if not value:
+        return "unknown"
+    return _truncate_path_component(value)
+
+
+def _normalize_path_component_text(value: str) -> str:
     value = re.sub(r'[<>:"/\\|?*]+', " ", value)
     value = re.sub(r"\s+", " ", value).strip()
-    return value or "unknown"
+    return value.rstrip(" .")
+
+
+def _truncate_path_component(
+    value: str,
+    *,
+    max_chars: int = MAX_PATH_COMPONENT_CHARS,
+    max_utf8_bytes: int = MAX_PATH_COMPONENT_UTF8_BYTES,
+    suffix: str = TRUNCATION_SUFFIX,
+) -> str:
+    text = value.strip().rstrip(" .")
+    if not text:
+        return "unknown"
+
+    truncated = len(text) > max_chars or len(text.encode("utf-8")) > max_utf8_bytes
+    suffix_bytes = suffix.encode("utf-8")
+
+    if truncated:
+        keep = max(max_chars - len(suffix), 1)
+        text = text[:keep].rstrip(" .")
+
+    byte_budget = max_utf8_bytes - (len(suffix_bytes) if truncated else 0)
+    while text and len(text.encode("utf-8")) > byte_budget:
+        text = text[:-1].rstrip(" .")
+
+    if not text:
+        text = "unknown"
+        truncated = False
+
+    candidate = f"{text}{suffix}" if truncated else text
+    if not candidate:
+        candidate = "unknown"
+
+    if candidate.upper() in WINDOWS_RESERVED_BASENAMES:
+        reserved_candidate = f"{candidate}_"
+        while reserved_candidate and len(reserved_candidate.encode("utf-8")) > max_utf8_bytes:
+            candidate = candidate[:-1].rstrip(" .")
+            reserved_candidate = f"{candidate}_"
+        candidate = reserved_candidate or "unknown_"
+
+    return candidate or "unknown"
 
 
 def output_folder_name(metadata: MovieMetadata) -> str:
-    title = safe_name(metadata.title or "untitled")
-    return f"[{metadata.code}] {title}"
+    title = _normalize_path_component_text(metadata.title or "untitled") or "untitled"
+    return _truncate_path_component(f"[{metadata.code}] {title}")
 
 
 def actress_folder_name(metadata: MovieMetadata) -> str:

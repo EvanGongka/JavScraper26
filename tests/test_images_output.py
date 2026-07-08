@@ -294,6 +294,34 @@ class ImageOutputTests(unittest.TestCase):
             )
             self.assertEqual(Path(result["poster_file"]).read_bytes(), fanart_bytes)
 
+    def test_save_result_truncates_issue_style_long_movie_folder_name(self) -> None:
+        fanart_bytes = make_image_bytes((1280, 720), (40, 220, 40))
+        client = ImageClient({"https://example.com/fanart.jpg": fanart_bytes})
+        metadata = MovieMetadata(
+            code="DVAJ-710",
+            title=(
+                "精子提供を希望する妊活妻「子供が欲しいだけですから」"
+                "トゲある態度だったのに子宮口を突き上げる長チ○ポでドプドプ中出し繰り返され"
+                "ベロキス膣奥ピストンねだって腰クネするマゾメスになり果てた 花衣つばき"
+            ),
+            actresses=["花衣つばき"],
+            thumb_url="https://example.com/fanart.jpg",
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "DVAJ-710.mp4"
+            source.write_bytes(b"video")
+            result = save_result(
+                client,
+                Path(temp_dir),
+                ScanEntry(code="DVAJ-710", files=[source]),
+                metadata,
+            )
+            movie_folder = Path(result["output_folder"]).name
+            self.assertLessEqual(len(movie_folder), 100)
+            self.assertLessEqual(len(movie_folder.encode("utf-8")), 255)
+            self.assertTrue(movie_folder.startswith("[DVAJ-710] "))
+
     def test_special_code_uses_same_wide_image_for_all_three_outputs(self) -> None:
         wide_bytes = make_image_bytes((1280, 720), (80, 120, 180))
         portrait_bytes = make_image_bytes((600, 900), (180, 80, 120))

@@ -7,7 +7,16 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from javscraper.models import MovieMetadata
-from javscraper.output import download_cover, download_preview_images, format_nfo_title, is_downloadable_url, write_nfo
+from javscraper.output import (
+    MAX_PATH_COMPONENT_CHARS,
+    MAX_PATH_COMPONENT_UTF8_BYTES,
+    download_cover,
+    download_preview_images,
+    format_nfo_title,
+    is_downloadable_url,
+    safe_name,
+    write_nfo,
+)
 
 
 class DummyClient:
@@ -105,6 +114,21 @@ class OutputResilienceTests(unittest.TestCase):
         self.assertEqual(len(client.calls), 2)
         self.assertTrue(any("跳过无效预览图" in line for line in logs))
         self.assertTrue(any("预览图下载失败" in line for line in logs))
+
+    def test_safe_name_truncates_overlong_component_by_char_count(self) -> None:
+        value = "A" * (MAX_PATH_COMPONENT_CHARS + 20)
+        result = safe_name(value)
+        self.assertLessEqual(len(result), MAX_PATH_COMPONENT_CHARS)
+        self.assertTrue(result.endswith("..."))
+
+    def test_safe_name_truncates_multibyte_component_by_utf8_bytes(self) -> None:
+        value = "精" * 90
+        result = safe_name(value)
+        self.assertLessEqual(len(result.encode("utf-8")), MAX_PATH_COMPONENT_UTF8_BYTES)
+        self.assertTrue(result.endswith("..."))
+
+    def test_safe_name_strips_windows_trailing_dots_and_spaces(self) -> None:
+        self.assertEqual(safe_name("Movie title . "), "Movie title")
 
 
 if __name__ == "__main__":
