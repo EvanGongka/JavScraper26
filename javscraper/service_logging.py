@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from threading import Lock
@@ -24,9 +25,14 @@ class ServiceLogEntry:
 
 
 class ServiceLogStore:
-    def __init__(self, max_entries: int = 400) -> None:
+    def __init__(
+        self,
+        max_entries: int = 400,
+        on_entry: Callable[[ServiceLogEntry], None] | None = None,
+    ) -> None:
         self._entries: deque[ServiceLogEntry] = deque(maxlen=max_entries)
         self._lock = Lock()
+        self._on_entry = on_entry
 
     def add(self, level: str, source: str, message: str) -> None:
         entry = ServiceLogEntry(
@@ -37,6 +43,8 @@ class ServiceLogStore:
         )
         with self._lock:
             self._entries.append(entry)
+        if self._on_entry is not None:
+            self._on_entry(entry)
 
     def extend(self, level: str, source: str, messages: Iterable[str]) -> None:
         for message in messages:

@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import unittest
+import asyncio
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
+from starlette.requests import Request
 from fastapi.responses import Response
 from PIL import Image
 
+from javscraper import webapp
 from javscraper.emby_service import ProxyConfig, ResolvedImage
 from javscraper.images import ImageSources, SelectedRegularPoster, image_size
 from javscraper.metadata_resolution import ResolvedMetadata
@@ -106,6 +109,32 @@ class WebAppTests(unittest.TestCase):
 
         self.assertEqual(mock_run.call_args.kwargs["host"], "0.0.0.0")
         self.assertEqual(mock_run.call_args.kwargs["port"], 8765)
+
+    def test_service_page_requests_are_logged(self):
+        before = len(SERVICE_LOGS.recent(limit=400))
+        request = Request({"type": "http", "method": "GET", "path": "/service", "headers": []})
+
+        async def call_next(_request):
+            return Response(status_code=200)
+
+        response = asyncio.run(webapp.service_request_logger(request, call_next))
+
+        self.assertEqual(response.status_code, 200)
+        entries = SERVICE_LOGS.recent(limit=400)[before:]
+        self.assertTrue(any(entry["source"] == "http" and "GET /service -> 200" in entry["message"] for entry in entries))
+
+    def test_health_requests_are_not_logged(self):
+        before = len(SERVICE_LOGS.recent(limit=400))
+        request = Request({"type": "http", "method": "GET", "path": "/emby-api/v1/health", "headers": []})
+
+        async def call_next(_request):
+            return Response(status_code=200)
+
+        response = asyncio.run(webapp.service_request_logger(request, call_next))
+
+        self.assertEqual(response.status_code, 200)
+        after = len(SERVICE_LOGS.recent(limit=400))
+        self.assertEqual(after, before)
 
     def test_emby_api_routes(self):
         with patch.dict("javscraper.emby_service.PROVIDER_CLASSES", {"Success": SuccessProvider}, clear=False):

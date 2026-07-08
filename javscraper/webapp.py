@@ -58,6 +58,13 @@ IGNORED_SERVICE_LOG_PATHS = {
 }
 
 
+def _write_console_log(entry) -> None:
+    print(
+        f"[javscraper] {entry.timestamp} {entry.level} {entry.source}: {entry.message}",
+        flush=True,
+    )
+
+
 @dataclass
 class TaskState:
     task_id: str
@@ -102,7 +109,7 @@ class TaskState:
 
 
 TASKS: dict[str, TaskState] = {}
-SERVICE_LOGS = ServiceLogStore()
+SERVICE_LOGS = ServiceLogStore(on_entry=_write_console_log)
 EMBY_SERVICE = EmbyMovieService(
     provider_names=DEFAULT_SITES,
     log_store=SERVICE_LOGS,
@@ -161,6 +168,54 @@ def _proxy_url_from_payload(proxy: dict[str, Any] | None) -> str | None:
 
 def _log_service(level: str, source: str, message: str) -> None:
     SERVICE_LOGS.add(level, source, message)
+
+
+def _should_log_http_request(path: str) -> bool:
+    if path in IGNORED_SERVICE_LOG_PATHS or path.startswith("/static"):
+        return False
+    if path in {"/", "/webui", "/service"}:
+        return True
+    return path.startswith("/api/") or path.startswith("/emby-api/")
+
+
+def _request_log_source(path: str) -> str:
+    if path.startswith("/emby-api/"):
+        return "emby-http"
+    return "http"
+
+
+def _masked_proxy_url(proxy_url: str | None) -> str:
+    if not proxy_url:
+        return "disabled"
+    if "://" not in proxy_url:
+        return proxy_url
+    protocol, remainder = proxy_url.split("://", 1)
+    host, sep, port = remainder.partition(":")
+    if not sep:
+        return f"{protocol}://{host}"
+    return f"{protocol}://{host}:{port}"
+
+
+def _log_launch_summary(host: str, port: int, browser_host: str) -> None:
+    browser_enabled = _should_open_browser()
+    _log_service(
+        "INFO",
+        "startup",
+        (
+            f"启动服务: mode={_mode_override() or 'auto'} host={host} port={port} "
+            f"browser={'enabled' if browser_enabled else 'disabled'}"
+        ),
+    )
+    _log_service(
+        "INFO",
+        "startup",
+        f"访问地址: root=http://{browser_host}:{port}/ service=http://{browser_host}:{port}/service",
+    )
+    _log_service(
+        "INFO",
+        "startup",
+        f"健康检查: http://127.0.0.1:{port}/emby-api/v1/health 默认代理={_masked_proxy_url(EMBY_SERVICE.default_proxy.url)}",
+    )
 
 
 def _connectivity_result_for(client: HttpClient, name: str, url: str) -> dict[str, Any]:
@@ -288,7 +343,9 @@ def _fetch_best_landscape_image(urls: list[str | None], proxy: ProxyConfig) -> t
 
 @app.middleware("http")
 async def service_request_logger(request: Request, call_next):
-    should_log = request.url.path.startswith("/emby-api/") and request.url.path not in IGNORED_SERVICE_LOG_PATHS
+    path = request.url.path
+    should_log = _should_log_http_request(path)
+    source = _request_log_source(path)
     started = time.perf_counter()
     try:
         response = await call_next(request)
@@ -297,18 +354,23 @@ async def service_request_logger(request: Request, call_next):
             elapsed_ms = (time.perf_counter() - started) * 1000
             _log_service(
                 "ERROR",
-                "emby-http",
-                f"{request.method} {request.url.path} -> 500 ({elapsed_ms:.1f}ms) {exc}",
+                source,
+                f"{request.method} {path} -> 500 ({elapsed_ms:.1f}ms) {exc}",
             )
         raise
     if should_log:
         elapsed_ms = (time.perf_counter() - started) * 1000
         _log_service(
             "INFO",
-            "emby-http",
-            f"{request.method} {request.url.path} -> {response.status_code} ({elapsed_ms:.1f}ms)",
+            source,
+            f"{request.method} {path} -> {response.status_code} ({elapsed_ms:.1f}ms)",
         )
     return response
+
+
+@app.on_event("startup")
+def on_app_startup() -> None:
+    _log_service("INFO", "startup", "应用已启动，等待请求")
 
 
 @app.get("/")
@@ -538,6 +600,7 @@ def launch() -> None:
     port = _launch_port()
     browser_host = "127.0.0.1" if host == "0.0.0.0" else host
     url = f"http://{browser_host}:{port}"
+    _log_launch_summary(host, port, browser_host)
     if _should_open_browser():
         threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     uvicorn.run(
