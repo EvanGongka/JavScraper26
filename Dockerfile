@@ -14,8 +14,7 @@ RUN useradd --create-home --uid 10001 appuser
 
 COPY requirements.txt /app/requirements.txt
 
-RUN python -m pip install --upgrade pip \
-    && pip install -r /app/requirements.txt
+RUN pip install --retries 10 --timeout 60 -r /app/requirements.txt
 
 COPY --chown=appuser:appuser app.py /app/app.py
 COPY --chown=appuser:appuser javscraper /app/javscraper

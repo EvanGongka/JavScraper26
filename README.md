@@ -1,39 +1,34 @@
 # javScraper26
 
-一个本地运行的 JAV 元数据刮削器，使用浏览器页面作为操作界面，抓取核心仍然是 Python。
-
-当前包含两种主要使用方式：
+一个本地运行的 JAV 元数据刮削器，提供两种用法：
 
 - `普通 WebUI`
+  适合扫描本地目录、批量抓取元数据、整理输出目录
 - `Emby 服务模式`
+  适合作为 Emby 插件后端，长期后台运行
 
-仓库内同时包含 Emby 插件子项目：
+## 你能做什么
 
-- `emby-plugin/JavScraper26.EmbyPlugin/`
+- 扫描视频目录并识别番号
+- 按番号类型自动分流站点
+- 抓取标题、简介、演员、系列、片商、发布日期等信息
+- 输出 `movie.nfo`、`fanart.jpg`、`thumb.jpg`、`poster.jpg`、`extrafanart/`
+- 按 `女优名/[番号] 标题` 整理目录
+- 给 Emby 提供元数据和图片接口
 
-## 功能概览
+## 支持的站点
 
-- 扫描本地目录并识别番号
-- 按番号类型自动区分普通番号和特殊番号
-- 按站点顺序逐个尝试抓取元数据
-- 输出 `movie.nfo`、海报、背景图、预览图
-- 按女优名和影片名整理目录结构
-- 提供 Emby 可调用的电影元数据和图片接口
-- 提供 Emby 插件源码和插件打包文件
+普通番号：
 
-## 当前支持站点
-
-普通番号站点：
-
-- `JavBus`
 - `JAV321`
 - `JavBooks`
 - `AVBASE`
 - `FreeJavBT`
+- `JavBus`
 - `AVMOO`
 - `JavDB`
 
-特殊番号站点：
+特殊番号：
 
 - `FC2`
 - `Caribbeancom`
@@ -45,19 +40,16 @@
 - `PACOPACOMAMA`
 - `MURAMURA`
 
-站点执行时会自动分流：
+## 快速开始
 
-- 普通番号只使用普通番号站点
-- 特殊番号只使用特殊番号站点
+### 方式 1：本地直接运行
 
-## 环境要求
+环境要求：
 
 - `Python 3.10+`
 - `pip`
-- macOS / Linux 可直接运行
-- Windows 可通过打包脚本生成 `.exe`
 
-## 安装
+安装并启动：
 
 ```bash
 cd javScraper26
@@ -67,107 +59,32 @@ pip install -r requirements.txt
 python3 app.py
 ```
 
-也可以在安装项目后直接运行：
+默认行为：
+
+- 监听 `127.0.0.1`
+- 端口随机
+- 自动打开浏览器
+- 先进入模式选择页
+
+安装项目后也可以直接运行：
 
 ```bash
 javscraper26
 ```
 
-## 启动方式
+### 方式 2：Docker 公共镜像
 
-### 启动到模式选择页
+Docker 镜像地址：
 
-```bash
-python3 app.py
-```
+- [gongkeao/javscraper26](https://hub.docker.com/r/gongkeao/javscraper26)
 
-默认行为：
-
-- 监听地址：`127.0.0.1`
-- 端口：随机空闲端口
-- 自动打开浏览器
-- 打开后先进入模式选择页
-
-### 直接启动到普通 WebUI
+直接拉取稳定版：
 
 ```bash
-JAVSCRAPER_MODE=webui python3 app.py
+docker pull gongkeao/javscraper26:latest
 ```
 
-### 直接启动到 Emby 服务模式
-
-```bash
-JAVSCRAPER_MODE=service JAVSCRAPER_PORT=8765 python3 app.py
-```
-
-### 局域网访问或服务器后台运行
-
-```bash
-JAVSCRAPER_MODE=service \
-JAVSCRAPER_HOST=0.0.0.0 \
-JAVSCRAPER_PORT=8765 \
-JAVSCRAPER_DISABLE_BROWSER=1 \
-python3 app.py
-```
-
-## 常用环境变量
-
-- `JAVSCRAPER_MODE`
-  - 可选：`webui`、`service`
-  - 不设置时显示模式选择页
-- `JAVSCRAPER_HOST`
-  - 默认：`127.0.0.1`
-  - 局域网访问时可设为 `0.0.0.0`
-- `JAVSCRAPER_PORT`
-  - 不设置时随机端口
-  - 服务模式通常使用固定端口，例如 `8765`
-- `JAVSCRAPER_DISABLE_BROWSER`
-  - `1/true/yes/on` 时不自动打开浏览器
-- `JAVSCRAPER_PROXY_ENABLED`
-- `JAVSCRAPER_PROXY_PROTOCOL`
-- `JAVSCRAPER_PROXY_HOST`
-- `JAVSCRAPER_PROXY_PORT`
-  - 用于配置服务模式默认代理
-
-## Docker（服务模式首版）
-
-当前 Docker 支持只覆盖 `Emby 服务模式`，用于服务器部署、局域网访问和给 Emby 插件提供后端接口。
-
-当前约束：
-
-- 容器默认启动为 `service` 模式
-- 容器内不支持自动打开浏览器
-- 容器内普通 WebUI 不作为支持场景
-- `选择目录` 依赖宿主系统对话框，不适合容器环境
-- `JavDB` 依赖浏览器 Cookie，Docker 首版默认视为不可用
-
-### 构建镜像
-
-```bash
-docker build -t javscraper26:local .
-```
-
-### 使用 Docker Compose 启动
-
-```bash
-mkdir -p docker-data/input docker-data/output
-docker compose up -d
-```
-
-默认配置：
-
-- 服务地址：`http://127.0.0.1:8765`
-- 健康检查：`http://127.0.0.1:8765/emby-api/v1/health`
-- 服务模式页面：`http://127.0.0.1:8765/service`
-
-`docker-compose.yml` 中预留了两个推荐挂载点：
-
-- 宿主输入目录 -> 容器 `/media/input`
-- 宿主输出目录 -> 容器 `/media/output`
-
-这两个挂载点主要用于统一容器内路径约定；当前首版 Compose 仍然只服务于 `service` 模式，不负责普通 WebUI 的目录扫描交互。
-
-### 使用 docker run 启动
+启动：
 
 ```bash
 docker run -d \
@@ -179,277 +96,109 @@ docker run -d \
   -e JAVSCRAPER_DISABLE_BROWSER=1 \
   -v "$(pwd)/docker-data/input:/media/input" \
   -v "$(pwd)/docker-data/output:/media/output" \
-  javscraper26:local
+  gongkeao/javscraper26:latest
 ```
 
-### 最小验证步骤
+Docker 版默认只支持：
 
-1. 执行 `docker compose up -d`
-2. 打开 `http://127.0.0.1:8765/service`
-3. 检查 `http://127.0.0.1:8765/emby-api/v1/health`
-4. 确认返回 `{"status":"ok", ...}`
+- `Emby 服务模式`
 
-### 给 Emby 插件使用
+不支持：
 
-Docker 部署时，推荐在 Emby 插件中填写 Docker 所在宿主机的可访问地址，例如：
+- 容器内普通 WebUI 的系统目录选择框
+- Docker 中的 `JavDB` 浏览器登录态读取
 
-- `http://<宿主机IP>:8765`
-
-如果 Emby 与 `javScraper26` 在同一台机器上，也可以直接填写：
-
-- `http://127.0.0.1:8765`
-
-### 已知限制
-
-- Docker 首版不支持普通 WebUI 的 `选择目录` 对话框
-- Docker 首版不处理 `JavDB` Cookie / 登录态
-- Docker 首版不包含镜像自动发布流程
-
-## 使用方式
-
-### 方式 1：模式选择页
-
-访问路径：
-
-- `/`
-
-页面作用：
-
-- 进入普通 WebUI
-- 进入 Emby 服务模式
-
-页面操作步骤：
-
-1. 启动程序。
-2. 浏览器打开首页后，会显示模式选择页。
-3. 点击 `进入普通模式` 进入普通 WebUI。
-4. 点击 `进入服务模式` 进入 Emby 服务模式。
+## 启动方式
 
 ### 模式选择页
 
-![模式选择页](docs/images/mode-selector.png)
+```bash
+python3 app.py
+```
 
-### 方式 2：普通 WebUI
+打开后可在首页选择：
 
-访问路径：
+- `普通 WebUI`
+- `Emby 服务模式`
+
+### 直接启动普通 WebUI
+
+```bash
+JAVSCRAPER_MODE=webui python3 app.py
+```
+
+### 直接启动 Emby 服务模式
+
+```bash
+JAVSCRAPER_MODE=service JAVSCRAPER_PORT=8765 python3 app.py
+```
+
+### 局域网访问 / 服务器运行
+
+```bash
+JAVSCRAPER_MODE=service \
+JAVSCRAPER_HOST=0.0.0.0 \
+JAVSCRAPER_PORT=8765 \
+JAVSCRAPER_DISABLE_BROWSER=1 \
+python3 app.py
+```
+
+## 普通 WebUI 怎么用
+
+访问：
 
 - `/webui`
 
-普通 WebUI 适合：
+操作步骤：
 
-- 扫描本地影片目录
-- 手动确认站点顺序
-- 批量刮削元数据
-- 整理输出目录
-- 查看任务日志和每条影片状态
+1. 选择 `扫描目录`
+2. 如有需要，选择 `输出目录`
+3. 点击 `扫描`
+4. 检查识别出的番号列表
+5. 调整站点顺序
+6. 点击 `开始刮削`
+7. 如有需要，在连通性弹窗里填写代理
+8. 点击 `继续刮削`
+9. 等待任务完成
 
-#### 普通 WebUI 页面结构
+说明：
 
-页面主要分为三块：
+- 如果不手动选择输出目录，默认会使用：
+  - `扫描目录/javScraper26-output`
+- 站点顺序只能在各自分组内调整
+- `JavDB` 依赖本机浏览器登录态，未登录时会自动跳过
 
-- 顶部操作区
-  - `扫描目录`
-  - `输出目录`
-  - `开始刮削`
-- 左侧站点顺序区
-  - 普通番号站点
-  - 特殊番号站点
-  - 上移 / 下移按钮
-- 右侧与下方结果区
-  - 扫描结果表格
-  - 运行日志
+### 页面截图
 
-#### 普通 WebUI 的完整操作步骤
+模式选择页：
 
-1. 启动程序并进入 `/webui`。
-2. 在 `扫描目录` 一栏点击 `选择目录`。
-3. 选中需要扫描的视频目录。
-4. 如需自定义输出位置，在 `输出目录` 一栏点击 `选择目录`。
-5. 如果不手动选择输出目录，程序会自动把输出目录补成 `扫描目录/javScraper26-output`。
-6. 点击 `扫描`。
-7. 页面会在 `扫描结果` 表格中列出识别出的番号、文件数、首文件和当前状态。
-8. 在 `站点顺序` 区域查看当前站点顺序。
-9. 如果需要调整顺序，点击某个站点右侧的 `上移` 或 `下移`。
-10. 普通番号站点和特殊番号站点分组独立，只能在各自分组内调整顺序。
-11. 确认扫描结果后，点击右上角 `开始刮削`。
-12. 页面会弹出 `站点连通性校验` 窗口。
-13. 程序会根据本次扫描出的番号类型，自动只校验本次真正会使用到的站点。
-14. 查看每个站点的校验结果。
-15. 如果某些站点不可访问，可以在弹窗下方填写代理参数：
-    - `协议`
-    - `代理地址`
-    - `端口`
-16. 需要重新校验时，点击 `重新校验`。
-17. 校验通过或确认继续后，点击 `继续刮削`。
-18. 任务开始后，表格中的每条影片会持续更新状态。
-19. `运行日志` 区域会持续显示每一步操作：
-    - 开始处理
-    - 本次尝试站点顺序
-    - 命中站点
-    - 下载图片
-    - 写入 NFO
-    - 移动视频文件
-    - 输出完成
-20. 全部完成后，日志末尾会显示 `manifest.csv` 的生成位置。
+![模式选择页](docs/images/mode-selector.png)
 
-#### 普通 WebUI 中各按钮的作用
-
-- `选择目录`
-  - 打开系统目录选择框
-- `扫描`
-  - 扫描目录中的文件并识别番号
-- `开始刮削`
-  - 开始执行当前扫描结果的批量任务
-- `上移`
-  - 将当前站点在同组内向前移动
-- `下移`
-  - 将当前站点在同组内向后移动
-- `重新校验`
-  - 使用当前代理配置重新检查站点可访问性
-- `继续刮削`
-  - 关闭校验阶段并正式开始任务
-- `关闭`
-  - 关闭连通性校验窗口
-
-#### 普通 WebUI 的任务状态说明
-
-- `待处理`
-  - 已加入任务，尚未开始执行
-- `执行中`
-  - 正在抓取该条目
-- `已命中 <站点名>`
-  - 已经从某个站点拿到可用元数据
-- `完成`
-  - 已完成输出落盘
-- `失败`
-  - 未获得最小可用字段或任务处理失败
-
-### 普通 WebUI 主界面
+普通 WebUI：
 
 ![普通 WebUI 主界面](docs/images/main-ui.png)
 
-### 连通性校验弹窗
+连通性校验：
 
 ![站点连通性校验弹窗](docs/images/connectivity-dialog.png)
 
-### 普通 WebUI 刮削结果
+刮削结果：
 
 ![普通 WebUI 刮削结果](docs/images/scrape-result.png)
 
-### 方式 3：Emby 服务模式
+## Emby 服务模式怎么用
 
-访问路径：
+访问：
 
 - `/service`
 
-Emby 服务模式适合：
+服务模式适合：
 
-- 给 Emby 插件提供元数据接口
-- 长时间在后台运行
-- 查看最近的 Emby 请求和抓取日志
+- 给 Emby 插件提供元数据
+- 长时间后台运行
+- 查看最近的请求和抓取日志
 
-#### Emby 服务模式页面内容
-
-页面会显示：
-
-- 服务状态
-- 当前模式
-- Provider 数量
-- 默认代理状态
-- 当前日志条数
-- Emby 插件应填写的 `Server URL`
-- 电影解析接口路径
-- 电影详情接口路径
-- 图片接口路径
-- 最近日志
-
-#### Emby 服务模式页面使用步骤
-
-1. 使用服务模式启动程序。
-2. 打开 `/service` 页面。
-3. 查看 `服务状态` 是否为 `运行中`。
-4. 记录页面中的 `Server URL`。
-5. 确认 `默认代理` 是否符合当前网络环境。
-6. 保持该页面运行，观察最近日志是否有来自 Emby 的请求。
-
-### Emby 服务模式页面
-
-![Emby 服务模式页面](docs/images/service-mode.png)
-
-### 方式 4：本地交互管理脚本
-
-脚本路径：
-
-```bash
-scripts/manage_javscraper.sh
-```
-
-#### 管理脚本可执行的操作
-
-- 启动
-- 停止
-- 重启
-- 查看状态
-- 查看日志
-- 查看当前配置
-
-#### 管理脚本使用步骤
-
-1. 在项目根目录执行：
-
-```bash
-bash scripts/manage_javscraper.sh
-```
-
-2. 进入菜单后，输入对应数字：
-   - `1` 启动
-   - `2` 停止
-   - `3` 重启
-   - `4` 状态
-   - `5` 查看日志
-   - `6` 查看当前配置
-   - `0` 退出
-3. 选择 `启动` 后，脚本会继续询问启动模式：
-   - `1` selector
-   - `2` webui
-   - `3` service
-4. 继续输入端口号。
-5. 再选择是否自动打开浏览器。
-6. 启动完成后，可通过 `状态` 查看 PID、日志位置和当前配置。
-
-#### 管理脚本运行后会生成的文件
-
-- `.runtime/javscraper.pid`
-- `.runtime/javscraper.log`
-- `.runtime/javscraper.env`
-
-### 方式 5：局域网 / 远程服务器辅助脚本
-
-脚本路径：
-
-```bash
-scripts/manage_javscraper_lan_server.sh
-```
-
-该脚本包含：
-
-- 代码同步
-- 远程准备 Python 环境
-- 远程启动服务
-- 远程停止服务
-- 远程重启服务
-
-使用前需要先按自己的服务器环境修改脚本中的固定参数：
-
-- `SERVER_HOST`
-- `SERVER_USER`
-- `SERVER_PASSWORD`
-- `REMOTE_ROOT`
-- 默认代理配置
-
-## Emby 服务接口
-
-当前服务模式提供以下接口：
+常用接口：
 
 - `GET /emby-api/v1/health`
 - `GET /emby-api/v1/logs/recent`
@@ -457,165 +206,78 @@ scripts/manage_javscraper_lan_server.sh
 - `GET /emby-api/v1/movies/{provider}/{id}`
 - `GET /emby-api/v1/images/{primary|thumb|backdrop}/{provider}/{id}`
 
-接口用途：
+最小验证：
 
-- `/emby-api/v1/health`
-  - 健康检查
-- `/emby-api/v1/logs/recent`
-  - 获取最近日志
-- `/emby-api/v1/movies/resolve`
-  - 根据名称或路径解析番号并返回候选结果
-- `/emby-api/v1/movies/{provider}/{id}`
-  - 获取某个候选影片的详细元数据
-- `/emby-api/v1/images/...`
-  - 获取主图、缩略图和背景图
+1. 启动服务模式
+2. 打开 `http://127.0.0.1:8765/service`
+3. 打开 `http://127.0.0.1:8765/emby-api/v1/health`
+4. 确认返回 `status=ok`
 
-## Emby 插件使用方法
+页面截图：
 
-### 插件文件位置
+![Emby 服务模式页面](docs/images/service-mode.png)
 
-插件源码目录：
+## Emby 插件怎么用
 
-```text
-emby-plugin/JavScraper26.EmbyPlugin/
-```
+仓库里已经包含 Emby 插件：
 
-仓库内已包含插件打包文件：
+- 插件 zip：
+  - `emby-plugin/JavScraper26.EmbyPlugin/bin/Emby.JavScraper26@v0.1.0.zip`
+- 插件 DLL：
+  - `emby-plugin/JavScraper26.EmbyPlugin/bin/JavScraper26.EmbyPlugin.dll`
 
-```text
-emby-plugin/JavScraper26.EmbyPlugin/bin/Emby.JavScraper26@v0.1.0.zip
-```
+### 安装插件
 
-仓库内也包含插件 DLL：
+推荐直接安装 zip：
 
-```text
-emby-plugin/JavScraper26.EmbyPlugin/bin/JavScraper26.EmbyPlugin.dll
-```
+1. 打开 Emby 管理后台
+2. 进入 `插件`
+3. 选择手动安装 / 上传插件
+4. 上传：
+   - `Emby.JavScraper26@v0.1.0.zip`
+5. 安装后按提示重启 Emby
 
-### 插件的工作方式
+### 配置插件
 
-插件会在 Emby 识别电影时：
-
-1. 读取影片条目的 `Name` 和 `Path`
-2. 调用 `javScraper26` 服务模式接口解析番号
-3. 获取影片详细元数据
-4. 获取图片地址
-5. 把元数据和图片回填给 Emby
-
-### 插件安装步骤
-
-#### 方法 1：安装 zip 插件包
-
-1. 打开 Emby 管理后台。
-2. 进入 `插件` 页面。
-3. 进入手动安装或上传插件的入口。
-4. 选择文件：
-
-```text
-emby-plugin/JavScraper26.EmbyPlugin/bin/Emby.JavScraper26@v0.1.0.zip
-```
-
-5. 安装完成后，按 Emby 提示重启服务。
-
-#### 方法 2：手动放入 DLL
-
-1. 停止 Emby 服务。
-2. 将以下文件复制到 Emby 插件目录：
-
-```text
-emby-plugin/JavScraper26.EmbyPlugin/bin/JavScraper26.EmbyPlugin.dll
-```
-
-3. 启动 Emby 服务。
-4. 打开 Emby 管理后台确认插件已加载。
-
-### 插件编译方法
-
-在安装了 `.NET SDK 6` 的环境中执行：
-
-```bash
-dotnet build -c Release emby-plugin/JavScraper26.EmbyPlugin/JavScraper26.EmbyPlugin.csproj
-```
-
-### 插件配置项说明
-
-插件页面包含以下配置项：
+插件配置项：
 
 - `Server URL`
-  - `javScraper26` 服务模式的完整地址
-  - 示例：`http://127.0.0.1:8765`
+  - 例如：`http://127.0.0.1:8765`
 - `Enable Proxy`
-  - 是否在插件请求时附带代理参数
 - `Proxy Protocol`
-  - 代理协议，例如 `http`
 - `Proxy Host`
-  - 代理地址，例如 `127.0.0.1`
 - `Proxy Port`
-  - 代理端口，例如 `7890`
 
-### Emby 插件配置步骤
+配置步骤：
 
-1. 先启动 `javScraper26` 的服务模式。
-2. 确认服务页面可以正常打开，例如：
+1. 先启动 `javScraper26` 的服务模式
+2. 打开 Emby 插件页
+3. 在 `Server URL` 中填写服务地址
+4. 如果需要代理，开启 `Enable Proxy` 并填完整代理信息
+5. 保存配置
+6. 在电影库中执行 `识别` 或 `刷新元数据`
 
-```text
-http://127.0.0.1:8765/service
-```
+如果 Emby 和 `javScraper26` 不在同一台机器：
 
-3. 打开 Emby 管理后台。
-4. 进入 `插件`。
-5. 打开 `javScraper26` 插件配置页面。
-6. 在 `Server URL` 中填写服务模式地址，例如：
+- `Server URL` 要填写 Emby 能访问到的地址
+- 例如：`http://<宿主机IP>:8765`
 
-```text
-http://127.0.0.1:8765
-```
+## 代理怎么配
 
-7. 如果当前网络环境需要代理，勾选 `Enable Proxy`。
-8. 填写：
-   - `Proxy Protocol`
-   - `Proxy Host`
-   - `Proxy Port`
-9. 保存配置。
-10. 返回 Emby 媒体库设置。
-11. 确认电影库启用了远程元数据抓取。
-12. 在电影条目上执行刷新元数据或重新识别。
-13. 回到 `javScraper26` 的服务模式页面查看最近日志，确认请求已经进入。
+### 普通 WebUI
 
-### Emby 插件的典型使用流程
+在连通性校验弹窗中填写代理：
 
-1. 启动 `javScraper26` 服务模式。
-2. 打开服务模式页面确认状态正常。
-3. 在 Emby 中安装并配置 `javScraper26` 插件。
-4. 打开电影库。
-5. 对单个影片执行 `识别` 或 `刷新元数据`。
-6. 插件调用 `javScraper26` 解析番号。
-7. `javScraper26` 返回元数据和图片。
-8. Emby 写入影片标题、简介、演员、系列、Studio、海报和背景图。
+- `协议`
+- `代理地址`
+- `端口`
 
-### Emby 插件使用时的建议
+这会用于：
 
-- `Server URL` 建议填写后端服务的根地址，不要带额外路径
-- 服务模式端口建议固定，避免 Emby 每次修改配置
-- 如果 Emby 和 `javScraper26` 不在同一台机器，`Server URL` 应填写可互相访问的局域网地址
-- 若使用局域网地址，服务端应使用：
+- 当前批次连通性检查
+- 当前批次抓取任务
 
-```bash
-JAVSCRAPER_HOST=0.0.0.0
-```
-
-## 代理说明
-
-### 普通 WebUI 代理
-
-普通 WebUI 的代理在连通性校验弹窗中填写。
-
-填写后会用于：
-
-- 当前批次的站点连通性检测
-- 当前批次的刮削任务
-
-### Emby 服务模式代理
+### Emby 服务模式
 
 服务模式支持两层代理：
 
@@ -633,8 +295,8 @@ JAVSCRAPER_PROXY_PORT=7890
 
 优先级：
 
-- 插件请求中带代理参数时，优先使用插件请求级代理
-- 插件未带代理参数时，使用服务端默认代理
+- 插件里填了代理时，优先使用插件代理
+- 插件没填时，使用服务端默认代理
 
 ## 输出结果
 
@@ -647,127 +309,76 @@ JAVSCRAPER_PROXY_PORT=7890
         └── [番号] 标题/
 ```
 
-影片目录内通常包含：
+目录里通常包含：
 
 - `番号.ext`
-- `番号-CD2.ext`、`番号-CD3.ext` ...（多文件时）
+- `番号-CD2.ext`、`番号-CD3.ext`（多文件时）
 - `movie.nfo`
 - `fanart.jpg`
 - `thumb.jpg`
 - `poster.jpg`
 - `extrafanart/`
 
-输出根目录下还会生成：
+输出根目录还会生成：
 
 - `manifest.csv`
 
-示例：
+注意：
 
-```text
-FreeJavBT/
-├── #整理完成/
-│   └── #未知女优/
-│       └── [ABP-310] 天然成分由來 輝月杏梨汁120％/
-│           ├── ABP-310.mp4
-│           ├── movie.nfo
-│           ├── fanart.jpg
-│           ├── thumb.jpg
-│           ├── poster.jpg
-│           └── extrafanart/
-└── manifest.csv
-```
+- 原视频文件会被移动到整理目录
+- 如果没拿到最小可用字段，条目不会落盘
 
-## 图片与整理规则
+## 已知限制
 
-- 原视频文件会移动到整理目录
-- `fanart.jpg` 会优先选择横图候选
-- `thumb.jpg` 当前由 `fanart.jpg` 复制生成
-- 普通番号会优先尝试原生海报或可裁切横图
-- 特殊番号通常使用同源图片生成 `fanart / thumb / poster`
-- 预览图会下载到 `extrafanart/`
-- 单张预览图下载失败时会自动跳过
-- 无女优信息时会归入 `#未知女优`
-- 未拿到最小可用字段 `title + cover` 时不会落盘
+- `JavDB` 依赖本机 Chromium 浏览器登录态
+- 未登录或 Cookie 失效时，`JavDB` 会自动跳过
+- Docker 首版不支持普通 WebUI 的系统目录选择框
+- Docker 中默认不支持 `JavDB` 登录态
 
-## JavDB 说明
+## 常用环境变量
 
-`JavDB` 依赖本机浏览器登录态。
+- `JAVSCRAPER_MODE`
+  - `webui` / `service`
+- `JAVSCRAPER_HOST`
+  - 默认：`127.0.0.1`
+- `JAVSCRAPER_PORT`
+  - 服务模式建议固定，例如 `8765`
+- `JAVSCRAPER_DISABLE_BROWSER`
+  - `1/true/yes/on` 时不自动打开浏览器
+- `JAVSCRAPER_PROXY_ENABLED`
+- `JAVSCRAPER_PROXY_PROTOCOL`
+- `JAVSCRAPER_PROXY_HOST`
+- `JAVSCRAPER_PROXY_PORT`
 
-当前实现会尝试读取本机 Chromium 浏览器中 `javdb.com` 的 Cookie。未登录、Cookie 过期或网络环境不满足时：
+## Docker 镜像版本说明
 
-- `JavDB` 会被标记为不可用
-- 普通 WebUI 的连通性结果中会显示不可用状态
-- 刮削流程会自动跳过 `JavDB`
-- 其他站点仍可继续执行
+- 只有 `v*` tag 才会自动发布 Docker 镜像
+- 稳定版示例：
+  - `v0.2.1` -> `gongkeao/javscraper26:0.2.1`
+- 测试版示例：
+  - `v0.2.1-test1` -> `gongkeao/javscraper26:0.2.1-test1`
+- 只有稳定版本 `vX.Y.Z` 会更新：
+  - `gongkeao/javscraper26:latest`
 
-## 截图
+## 开发者补充
 
-### 模式选择页
+如果你需要自己构建：
 
-![模式选择页](docs/images/mode-selector.png)
-
-### 普通 WebUI 主界面
-
-![普通 WebUI 主界面](docs/images/main-ui.png)
-
-### 连通性校验弹窗
-
-![站点连通性校验弹窗](docs/images/connectivity-dialog.png)
-
-### 普通 WebUI 刮削结果
-
-![普通 WebUI 刮削结果](docs/images/scrape-result.png)
-
-### Emby 服务模式页面
-
-![Emby 服务模式页面](docs/images/service-mode.png)
-
-## 本地测试目录
-
-项目中保留了本地测试输入 / 输出目录：
-
-- `test/input/`
-- `test/JavBus/`
-- `test/JavDB/`
-- `test/AVMOO/`
-- `test/FreeJavBT/`
-- `test/JavBooks/`
-
-自动化测试目录：
-
-- `tests/`
-
-## 打包
-
-### 打包 macOS `.app`
+### 本地 Docker 构建
 
 ```bash
-bash scripts/build_macos_app.sh
+docker build -t javscraper26:local .
 ```
 
-主要产物：
+### Docker Compose 本地构建启动
 
-- `dist/javScraper26.app`
-- `release/javScraper26-macos/`
-- `release/javScraper26-macos.zip`
-
-### 打包 Windows `.exe`
-
-```bat
-scripts\build_windows_exe.bat
+```bash
+mkdir -p docker-data/input docker-data/output
+docker compose up -d
 ```
 
-主要产物：
+### Emby 插件编译
 
-- `dist\javScraper26\javScraper26.exe`
-- `release\javScraper26-windows\`
-- `release\javScraper26-windows.zip`
-
-## 开源协议
-
-本项目采用以下协议发布：
-
-- `GPL-3.0-or-later`
-- `Anti-996 License`
-
-项目根目录已包含完整的 `LICENSE` 文件。
+```bash
+dotnet build -c Release emby-plugin/JavScraper26.EmbyPlugin/JavScraper26.EmbyPlugin.csproj
+```
