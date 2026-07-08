@@ -27,5 +27,6 @@ emby-plugin/**/obj/
 *.spec
 
 scripts/manage_javscraper_lan_server.sh
+scripts/local_trigger_release_tag.sh
 
 PROJECT_CONTEXT.md
