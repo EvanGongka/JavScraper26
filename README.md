@@ -129,6 +129,82 @@ python3 app.py
 - `JAVSCRAPER_PROXY_PORT`
   - 用于配置服务模式默认代理
 
+## Docker（服务模式首版）
+
+当前 Docker 支持只覆盖 `Emby 服务模式`，用于服务器部署、局域网访问和给 Emby 插件提供后端接口。
+
+当前约束：
+
+- 容器默认启动为 `service` 模式
+- 容器内不支持自动打开浏览器
+- 容器内普通 WebUI 不作为支持场景
+- `选择目录` 依赖宿主系统对话框，不适合容器环境
+- `JavDB` 依赖浏览器 Cookie，Docker 首版默认视为不可用
+
+### 构建镜像
+
+```bash
+docker build -t javscraper26:local .
+```
+
+### 使用 Docker Compose 启动
+
+```bash
+mkdir -p docker-data/input docker-data/output
+docker compose up -d
+```
+
+默认配置：
+
+- 服务地址：`http://127.0.0.1:8765`
+- 健康检查：`http://127.0.0.1:8765/emby-api/v1/health`
+- 服务模式页面：`http://127.0.0.1:8765/service`
+
+`docker-compose.yml` 中预留了两个推荐挂载点：
+
+- 宿主输入目录 -> 容器 `/media/input`
+- 宿主输出目录 -> 容器 `/media/output`
+
+这两个挂载点主要用于统一容器内路径约定；当前首版 Compose 仍然只服务于 `service` 模式，不负责普通 WebUI 的目录扫描交互。
+
+### 使用 docker run 启动
+
+```bash
+docker run -d \
+  --name javscraper26 \
+  -p 8765:8765 \
+  -e JAVSCRAPER_MODE=service \
+  -e JAVSCRAPER_HOST=0.0.0.0 \
+  -e JAVSCRAPER_PORT=8765 \
+  -e JAVSCRAPER_DISABLE_BROWSER=1 \
+  -v "$(pwd)/docker-data/input:/media/input" \
+  -v "$(pwd)/docker-data/output:/media/output" \
+  javscraper26:local
+```
+
+### 最小验证步骤
+
+1. 执行 `docker compose up -d`
+2. 打开 `http://127.0.0.1:8765/service`
+3. 检查 `http://127.0.0.1:8765/emby-api/v1/health`
+4. 确认返回 `{"status":"ok", ...}`
+
+### 给 Emby 插件使用
+
+Docker 部署时，推荐在 Emby 插件中填写 Docker 所在宿主机的可访问地址，例如：
+
+- `http://<宿主机IP>:8765`
+
+如果 Emby 与 `javScraper26` 在同一台机器上，也可以直接填写：
+
+- `http://127.0.0.1:8765`
+
+### 已知限制
+
+- Docker 首版不支持普通 WebUI 的 `选择目录` 对话框
+- Docker 首版不处理 `JavDB` Cookie / 登录态
+- Docker 首版不包含镜像自动发布流程
+
 ## 使用方式
 
 ### 方式 1：模式选择页

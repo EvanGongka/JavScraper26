@@ -1,0 +1,21 @@
+services:
+  javscraper26:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: javscraper26
+    ports:
+      - "8765:8765"
+    environment:
+      JAVSCRAPER_MODE: service
+      JAVSCRAPER_HOST: 0.0.0.0
+      JAVSCRAPER_PORT: 8765
+      JAVSCRAPER_DISABLE_BROWSER: "1"
+      JAVSCRAPER_PROXY_ENABLED: "${JAVSCRAPER_PROXY_ENABLED:-false}"
+      JAVSCRAPER_PROXY_PROTOCOL: "${JAVSCRAPER_PROXY_PROTOCOL:-http}"
+      JAVSCRAPER_PROXY_HOST: "${JAVSCRAPER_PROXY_HOST:-}"
+      JAVSCRAPER_PROXY_PORT: "${JAVSCRAPER_PROXY_PORT:-}"
+    volumes:
+      - ./docker-data/input:/media/input
+      - ./docker-data/output:/media/output
+    restart: unless-stopped
