@@ -70,17 +70,20 @@ class RuntimeLoggingTests(unittest.TestCase):
                     json.loads(line)
 
     def test_file_failure_only_warns_and_keeps_stdout_working(self) -> None:
-        stream = io.StringIO()
-        writer = RuntimeLogWriter(
-            LogSettings(file_path="/dev/null/javscraper.log"),
-            stream=stream,
-        )
-        stderr = io.StringIO()
-        with redirect_stderr(stderr):
-            writer.emit("INFO", "test", "仍然可用")
-            writer.emit("INFO", "test", "继续运行")
-        self.assertIn("仍然可用", stream.getvalue())
-        self.assertEqual(stderr.getvalue().count("日志文件写入失败"), 1)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            blocked_parent = Path(temp_dir) / "blocked"
+            blocked_parent.write_text("not a directory", encoding="utf-8")
+            stream = io.StringIO()
+            writer = RuntimeLogWriter(
+                LogSettings(file_path=str(blocked_parent / "javscraper.log")),
+                stream=stream,
+            )
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                writer.emit("INFO", "test", "仍然可用")
+                writer.emit("INFO", "test", "继续运行")
+            self.assertIn("仍然可用", stream.getvalue())
+            self.assertEqual(stderr.getvalue().count("日志文件写入失败"), 1)
 
     def test_service_log_optional_fields_are_backward_compatible(self) -> None:
         mirrored = []
