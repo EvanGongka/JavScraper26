@@ -31,3 +31,10 @@ scripts/local_trigger_release_tag.sh
 
 PROJECT_CONTEXT.md
 AGENT.md
+
+# Keep stability regression tests tracked; ignore other local test files.
+!tests/
+tests/*
+!tests/test_runtime_cache.py
+!tests/test_runtime_logging.py
+!tests/test_runtime_stability.py

@@ -252,9 +252,16 @@ def _download_best_landscape_image(
         path, image_bytes = _download_image(client, entry.code, url, folder, filename, on_log)
         if path is None or image_bytes is None:
             continue
+        try:
+            is_portrait = is_portrait_image(image_bytes)
+        except Exception as exc:
+            path.unlink(missing_ok=True)
+            if on_log:
+                on_log(f"[{entry.code}] {filename} 候选图片损坏，继续尝试下一候选: {url} ({exc})")
+            continue
         if fallback is None:
             fallback = (path, image_bytes, url)
-        if not is_portrait_image(image_bytes):
+        if not is_portrait:
             return path, image_bytes, url
         if on_log:
             on_log(f"[{entry.code}] {filename} 候选为竖图，继续尝试下一候选: {url}")

@@ -137,7 +137,13 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(after, before)
 
     def test_emby_api_routes(self):
-        with patch.dict("javscraper.emby_service.PROVIDER_CLASSES", {"Success": SuccessProvider}, clear=False):
+        with patch.dict("javscraper.emby_service.PROVIDER_CLASSES", {"Success": SuccessProvider}, clear=False), patch(
+            "javscraper.metadata_resolution.select_dmm_regular_poster_for_code",
+            return_value=None,
+        ), patch(
+            "javscraper.metadata_resolution.select_best_regular_poster_for_metadata",
+            return_value=None,
+        ):
             resolve = emby_resolve_movie(
                 path=r"D:\Media\ABP-123\ABP-123.mp4",
             )

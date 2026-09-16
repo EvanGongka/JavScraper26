@@ -9,6 +9,7 @@ from javscraper.network import HttpClient
 from javscraper.providers.base import Provider, ProviderError
 
 InfoLogger = Callable[[str], None]
+ExceptionLogger = Callable[[str, Exception], None]
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ def resolve_metadata_from_providers(
     on_info: InfoLogger | None = None,
     on_warn: InfoLogger | None = None,
     on_error: InfoLogger | None = None,
+    on_exception: ExceptionLogger | None = None,
 ) -> ResolvedMetadata | None:
     metadata = MovieMetadata(code=code)
     matched_provider: str | None = None
@@ -58,6 +60,8 @@ def resolve_metadata_from_providers(
             continue
         except Exception as exc:
             _emit(on_error, f"[{code}] {provider.site_name} 异常: {exc}")
+            if on_exception:
+                on_exception(provider.site_name, exc)
             continue
 
         if not fetched.is_usable:

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import os
+from collections import deque
+import re
 import socket
 import sys
 import threading
 import time
+import traceback as traceback_module
 import uuid
 import webbrowser
 from dataclasses import dataclass, field
@@ -43,6 +46,17 @@ from javscraper.provider_catalog import (
 )
 from javscraper.scanner import scan_directory
 from javscraper.service_logging import ServiceLogStore
+from javscraper.runtime_logging import (
+    LogSettings,
+    RUNTIME_METRICS,
+    RuntimeMonitor,
+    configure_bootstrap_logging,
+    get_runtime_log_writer,
+    redact_text,
+    redact_url,
+    request_context,
+    traceback_text,
+)
 from javscraper.utils.browser import get_javdb_cookie_status
 from javscraper.utils.dialogs import pick_directory
 
@@ -59,9 +73,20 @@ IGNORED_SERVICE_LOG_PATHS = {
 
 
 def _write_console_log(entry) -> None:
-    print(
-        f"[javscraper] {entry.timestamp} {entry.level} {entry.source}: {entry.message}",
-        flush=True,
+    get_runtime_log_writer().emit(
+        entry.level,
+        entry.source,
+        entry.message,
+        timestamp=entry.timestamp,
+        event=entry.event or "service.log",
+        request_id=entry.request_id,
+        task_id=entry.task_id,
+        code=entry.code,
+        provider=entry.provider,
+        duration_ms=entry.duration_ms,
+        exception_type=entry.exception_type,
+        traceback=entry.traceback,
+        details=entry.details,
     )
 
 
@@ -73,25 +98,32 @@ class TaskState:
     providers: list[str]
     proxy_url: str | None = None
     status: str = "running"
-    logs: list[str] = field(default_factory=list)
+    logs: deque[str] = field(default_factory=lambda: deque(maxlen=LogSettings.from_env().task_log_max_entries))
     entries: dict[str, str] = field(default_factory=dict)
     manifest_path: str | None = None
     error: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
+    created_monotonic: float = field(default_factory=time.monotonic, repr=False)
+    updated_monotonic: float = field(default_factory=time.monotonic, repr=False)
+    finished_monotonic: float | None = field(default=None, repr=False)
 
     def append_log(self, text: str) -> None:
         with self.lock:
-            self.logs.append(text)
+            self.logs.append(redact_text(text))
+            self.updated_monotonic = time.monotonic()
 
     def set_entry_status(self, code: str, status: str) -> None:
         with self.lock:
             self.entries[code] = status
+            self.updated_monotonic = time.monotonic()
 
     def finish(self, manifest_path: str | None = None, error: str | None = None) -> None:
         with self.lock:
             self.status = "failed" if error else "completed"
             self.manifest_path = manifest_path
-            self.error = error
+            self.error = redact_text(error) if error else None
+            self.updated_monotonic = time.monotonic()
+            self.finished_monotonic = self.updated_monotonic
 
     def to_dict(self) -> dict[str, Any]:
         with self.lock:
@@ -109,12 +141,67 @@ class TaskState:
 
 
 TASKS: dict[str, TaskState] = {}
+TASKS_LOCK = threading.Lock()
 SERVICE_LOGS = ServiceLogStore(on_entry=_write_console_log)
 EMBY_SERVICE = EmbyMovieService(
     provider_names=DEFAULT_SITES,
     log_store=SERVICE_LOGS,
     default_proxy=default_proxy_from_env(),
 )
+
+
+def _runtime_snapshot() -> dict[str, Any]:
+    _cleanup_tasks()
+    snapshot = RUNTIME_METRICS.snapshot()
+    with TASKS_LOCK:
+        task_count = len(TASKS)
+        running_task_count = sum(1 for task in TASKS.values() if task.status == "running")
+    cache = EMBY_SERVICE.cache_stats()
+    snapshot.update({
+        "taskCount": task_count,
+        "runningTaskCount": running_task_count,
+        "metadataCacheEntries": cache["entries"],
+        "metadataCacheMaxEntries": cache["maxEntries"],
+        "metadataCacheTtlSeconds": cache["ttlSeconds"],
+        "metadataCacheHits": cache["hits"],
+        "metadataCacheMisses": cache["misses"],
+        "metadataCacheEvictions": cache["evictions"],
+    })
+    return snapshot
+
+
+RUNTIME_MONITOR = RuntimeMonitor(_runtime_snapshot)
+
+
+def _cleanup_tasks(now: float | None = None) -> int:
+    now = time.monotonic() if now is None else now
+    settings = LogSettings.from_env()
+    removed = 0
+    with TASKS_LOCK:
+        expired_ids = [
+            task_id
+            for task_id, task in TASKS.items()
+            if task.status != "running"
+            and task.finished_monotonic is not None
+            and now - task.finished_monotonic >= settings.task_retention_seconds
+        ]
+        for task_id in expired_ids:
+            TASKS.pop(task_id, None)
+            removed += 1
+
+        completed_tasks = sorted(
+            (
+                task
+                for task in TASKS.values()
+                if task.status != "running" and task.finished_monotonic is not None
+            ),
+            key=lambda task: task.finished_monotonic or task.updated_monotonic,
+        )
+        overflow = max(0, len(TASKS) - settings.task_max_count)
+        for task in completed_tasks[:overflow]:
+            if TASKS.pop(task.task_id, None) is not None:
+                removed += 1
+    return removed
 
 
 class ScanRequest(BaseModel):
@@ -166,8 +253,10 @@ def _proxy_url_from_payload(proxy: dict[str, Any] | None) -> str | None:
     return _proxy_from_payload(proxy).url
 
 
-def _log_service(level: str, source: str, message: str) -> None:
-    SERVICE_LOGS.add(level, source, message)
+def _log_service(level: str, source: str, message: str, **kwargs: Any) -> None:
+    if level.upper() in {"ERROR", "CRITICAL"}:
+        RUNTIME_METRICS.error_recorded()
+    SERVICE_LOGS.add(level, source, message, **kwargs)
 
 
 def _should_log_http_request(path: str) -> bool:
@@ -185,15 +274,7 @@ def _request_log_source(path: str) -> str:
 
 
 def _masked_proxy_url(proxy_url: str | None) -> str:
-    if not proxy_url:
-        return "disabled"
-    if "://" not in proxy_url:
-        return proxy_url
-    protocol, remainder = proxy_url.split("://", 1)
-    host, sep, port = remainder.partition(":")
-    if not sep:
-        return f"{protocol}://{host}"
-    return f"{protocol}://{host}:{port}"
+    return redact_url(proxy_url) if proxy_url else "disabled"
 
 
 def _log_launch_summary(host: str, port: int, browser_host: str) -> None:
@@ -285,38 +366,127 @@ def _connectivity_result_for_unavailable_provider(name: str, detail: str) -> dic
 
 
 def _run_task(task: TaskState) -> None:
-    try:
-        entries, _ = scan_directory(task.source_path)
-        javdb_available = _javdb_available()
-        task.providers = connectivity_provider_names_for_codes(
-            [entry.code for entry in entries],
-            task.providers,
-            javdb_available=javdb_available,
+    failed = False
+    with request_context(task_id=task.task_id):
+        _log_service(
+            "INFO",
+            "task",
+            f"任务开始: source={task.source_path} output={task.output_path}",
+            event="task.started",
+            task_id=task.task_id,
+            details={"sourcePath": task.source_path, "outputPath": task.output_path},
         )
-        for entry in entries:
-            task.set_entry_status(entry.code, "待处理")
+        try:
+            entries, skipped = scan_directory(task.source_path)
+            javdb_available = _javdb_available()
+            task.providers = connectivity_provider_names_for_codes(
+                [entry.code for entry in entries],
+                task.providers,
+                javdb_available=javdb_available,
+            )
+            for entry in entries:
+                task.set_entry_status(entry.code, "待处理")
+            task.append_log(f"扫描完成: 识别 {len(entries)} 个条目，跳过 {len(skipped)} 个文件")
+            _log_service(
+                "INFO",
+                "task",
+                f"扫描完成: entries={len(entries)} skipped={len(skipped)}",
+                event="task.scan_completed",
+                task_id=task.task_id,
+                details={"entryCount": len(entries), "skippedCount": len(skipped)},
+            )
 
-        pipeline = ScrapePipeline(
-            output_root=task.output_path,
-            provider_names=task.providers,
-            on_log=task.append_log,
-            on_status=task.set_entry_status,
-            proxy_url=task.proxy_url,
-            javdb_available=javdb_available,
-        )
-        manifest = pipeline.run(entries)
-        task.finish(str(manifest))
-    except Exception as exc:  # pragma: no cover - existing task mode safeguard
-        task.append_log(f"任务异常: {exc}")
-        task.finish(error=str(exc))
+            def on_entry_error(code: str, exc: Exception) -> None:
+                _log_service(
+                    "ERROR",
+                    "task",
+                    f"[{code}] 单条目异常，已跳过并继续: {exc}",
+                    event="task.entry_failed",
+                    task_id=task.task_id,
+                    code=code,
+                    exception_type=type(exc).__name__,
+                    traceback=traceback_text(exc),
+                    details={"sourcePath": task.source_path, "outputPath": task.output_path},
+                )
+
+            pipeline = ScrapePipeline(
+                output_root=task.output_path,
+                provider_names=task.providers,
+                on_log=task.append_log,
+                on_status=task.set_entry_status,
+                proxy_url=task.proxy_url,
+                javdb_available=javdb_available,
+                on_error=on_entry_error,
+            )
+            manifest = pipeline.run(entries)
+            task.finish(str(manifest))
+            _log_service(
+                "INFO",
+                "task",
+                f"任务完成: manifest={manifest}",
+                event="task.completed",
+                task_id=task.task_id,
+                details={"manifestPath": str(manifest)},
+            )
+        except Exception as exc:  # pragma: no cover - defensive task boundary
+            failed = True
+            task.append_log(f"任务异常: {exc}")
+            task.finish(error=str(exc))
+            _log_service(
+                "ERROR",
+                "task",
+                f"任务异常，任务已结束: {exc}",
+                event="task.failed",
+                task_id=task.task_id,
+                exception_type=type(exc).__name__,
+                traceback=traceback_text(exc),
+                details={"sourcePath": task.source_path, "outputPath": task.output_path},
+            )
+        finally:
+            RUNTIME_METRICS.task_finished(failed=failed or task.status == "failed")
+            _cleanup_tasks()
 
 
 def _fetch_remote_image(url: str, proxy: ProxyConfig) -> tuple[bytes, str]:
-    client = HttpClient(timeout=20, proxy_url=proxy.url)
+    client = HttpClient(proxy_url=proxy.url, proxy_source="emby_image")
+    started = time.perf_counter()
     try:
-        return download_image_bytes(client, url)
+        content, media_type = download_image_bytes(client, url)
+        _log_service(
+            "INFO",
+            "emby-image",
+            f"图片下载完成: {redact_url(url)} ({len(content)} bytes)",
+            event="emby.image.download_completed",
+            duration_ms=(time.perf_counter() - started) * 1000,
+            details={
+                "url": redact_url(url),
+                "sizeBytes": len(content),
+                "mediaType": media_type,
+                "proxyConfigured": bool(proxy.url),
+            },
+        )
+        return content, media_type
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"图片下载失败: {exc}") from exc
+        error_details = {"url": redact_url(url), "proxyConfigured": bool(proxy.url)}
+        if hasattr(exc, "size"):
+            error_details["sizeBytes"] = getattr(exc, "size")
+        if hasattr(exc, "limit"):
+            error_details["maxBytes"] = getattr(exc, "limit")
+        _log_service(
+            "WARN",
+            "emby-image",
+            f"图片下载失败: {redact_url(url)} ({exc})",
+            event="emby.image.download_failed",
+            duration_ms=(time.perf_counter() - started) * 1000,
+            exception_type=type(exc).__name__,
+            traceback=traceback_text(exc),
+            details=error_details,
+        )
+        raise HTTPException(status_code=404, detail=f"图片下载失败: {redact_text(exc)}") from exc
+    finally:
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()
 
 
 def _stream_remote_image(url: str, proxy: ProxyConfig) -> Response:
@@ -326,19 +496,48 @@ def _stream_remote_image(url: str, proxy: ProxyConfig) -> Response:
 
 def _fetch_best_landscape_image(urls: list[str | None], proxy: ProxyConfig) -> tuple[bytes, str]:
     fallback: tuple[bytes, str] | None = None
+    last_error: Exception | None = None
     seen: set[str] = set()
     for url in urls:
         if not url or url in seen:
             continue
         seen.add(url)
-        content, media_type = _fetch_remote_image(url, proxy)
+        try:
+            content, media_type = _fetch_remote_image(url, proxy)
+        except Exception as exc:
+            last_error = exc
+            _log_service(
+                "WARN",
+                "emby-image",
+                f"图片候选失败，继续尝试下一个: {redact_url(url)} ({exc})",
+                event="emby.image.candidate_failed",
+                exception_type=type(exc).__name__,
+                details={"url": redact_url(url)},
+            )
+            continue
+        try:
+            is_portrait = is_portrait_image(content)
+        except Exception as exc:
+            last_error = exc
+            _log_service(
+                "WARN",
+                "emby-image",
+                f"图片候选损坏，继续尝试下一个: {redact_url(url)} ({exc})",
+                event="emby.image.invalid",
+                exception_type=type(exc).__name__,
+                details={"url": redact_url(url), "sizeBytes": len(content)},
+            )
+            continue
         if fallback is None:
             fallback = (content, media_type)
-        if not is_portrait_image(content):
+        if not is_portrait:
             return content, media_type
     if fallback is not None:
         return fallback
-    raise HTTPException(status_code=404, detail="该条目没有可用图片")
+    detail = "该条目没有可用图片"
+    if last_error is not None:
+        detail = f"图片候选全部失败: {redact_text(last_error)}"
+    raise HTTPException(status_code=404, detail=detail)
 
 
 @app.middleware("http")
@@ -346,31 +545,91 @@ async def service_request_logger(request: Request, call_next):
     path = request.url.path
     should_log = _should_log_http_request(path)
     source = _request_log_source(path)
+    supplied_request_id = request.headers.get("x-request-id", "").strip()
+    request_id = supplied_request_id if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", supplied_request_id) else uuid.uuid4().hex[:12]
+    request.state.request_id = request_id
     started = time.perf_counter()
+    RUNTIME_METRICS.request_started()
+    status_code = 500
+    request_error = False
     try:
-        response = await call_next(request)
+        with request_context(request_id=request_id):
+            if should_log:
+                _log_service(
+                    "INFO",
+                    source,
+                    f"{request.method} {path} 开始处理",
+                    event="http.request.started",
+                    request_id=request_id,
+                    details={"method": request.method, "path": path},
+                )
+            response = await call_next(request)
+            status_code = response.status_code
     except Exception as exc:
+        request_error = True
+        elapsed_ms = (time.perf_counter() - started) * 1000
         if should_log:
-            elapsed_ms = (time.perf_counter() - started) * 1000
             _log_service(
                 "ERROR",
                 source,
                 f"{request.method} {path} -> 500 ({elapsed_ms:.1f}ms) {exc}",
+                event="http.request.exception",
+                request_id=request_id,
+                duration_ms=elapsed_ms,
+                exception_type=type(exc).__name__,
+                traceback=traceback_module.format_exc(),
+                details={"method": request.method, "path": path, "statusCode": 500},
             )
         raise
-    if should_log:
+    else:
         elapsed_ms = (time.perf_counter() - started) * 1000
-        _log_service(
-            "INFO",
-            source,
-            f"{request.method} {path} -> {response.status_code} ({elapsed_ms:.1f}ms)",
+        slow = elapsed_ms >= LogSettings.from_env().slow_request_ms
+        request_error = status_code >= 500
+        if should_log:
+            level = "ERROR" if status_code >= 500 else "WARN" if status_code >= 400 or slow else "INFO"
+            event = "http.request.slow" if slow else "http.request.completed"
+            _log_service(
+                level,
+                source,
+                f"{request.method} {path} -> {status_code} ({elapsed_ms:.1f}ms)",
+                event=event,
+                request_id=request_id,
+                duration_ms=elapsed_ms,
+                details={"method": request.method, "path": path, "statusCode": status_code},
+            )
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        RUNTIME_METRICS.request_finished(
+            error=request_error,
+            slow=elapsed_ms >= LogSettings.from_env().slow_request_ms,
         )
-    return response
 
 
 @app.on_event("startup")
 def on_app_startup() -> None:
-    _log_service("INFO", "startup", "应用已启动，等待请求")
+    configure_bootstrap_logging()
+    _log_service(
+        "INFO",
+        "startup",
+        "应用已启动，等待请求",
+        event="application.ready",
+        details={
+            "mode": _mode_override() or "auto",
+            "host": _launch_host(),
+            "port": os.getenv("JAVSCRAPER_PORT", ""),
+            "logFile": get_runtime_log_writer().settings.file_path,
+        },
+    )
+    RUNTIME_MONITOR.start()
+
+
+@app.on_event("shutdown")
+def on_app_shutdown() -> None:
+    _log_service("INFO", "shutdown", "收到停止信号，开始关闭服务", event="application.shutdown_started")
+    RUNTIME_MONITOR.stop()
+    _log_service("INFO", "shutdown", "服务已正常关闭", event="application.shutdown_completed")
 
 
 @app.get("/")
@@ -437,10 +696,15 @@ def api_scan(payload: ScanRequest):
 @app.post("/api/connectivity")
 def api_connectivity(payload: ConnectivityRequest):
     proxy_url = _proxy_url_from_payload(payload.proxy)
-    client = HttpClient(timeout=8, proxy_url=proxy_url)
-    site_names = _connectivity_sites_for_payload(payload)
-    site_items = [(name, SITE_CONNECTIVITY_TARGETS[name]) for name in site_names]
-    return {"results": [_connectivity_result_for(client, name, url) for name, url in site_items]}
+    client = HttpClient(proxy_url=proxy_url, proxy_source="webui_request")
+    try:
+        site_names = _connectivity_sites_for_payload(payload)
+        site_items = [(name, SITE_CONNECTIVITY_TARGETS[name]) for name in site_names]
+        return {"results": [_connectivity_result_for(client, name, url) for name, url in site_items]}
+    finally:
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()
 
 
 @app.post("/api/connectivity/{site_name}")
@@ -450,8 +714,13 @@ def api_connectivity_single(site_name: str, payload: ConnectivityRequest):
     if site_name == "JavDB" and not _javdb_available():
         return _connectivity_result_for_unavailable_provider(site_name, str(_javdb_status()["reason"]))
     proxy_url = _proxy_url_from_payload(payload.proxy)
-    client = HttpClient(timeout=8, proxy_url=proxy_url)
-    return _connectivity_result_for(client, site_name, SITE_CONNECTIVITY_TARGETS[site_name])
+    client = HttpClient(proxy_url=proxy_url, proxy_source="webui_request")
+    try:
+        return _connectivity_result_for(client, site_name, SITE_CONNECTIVITY_TARGETS[site_name])
+    finally:
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()
 
 
 @app.post("/api/start")
@@ -469,22 +738,37 @@ def api_start(payload: StartRequest):
     if not provider_order:
         raise HTTPException(status_code=400, detail="没有可用站点")
 
-    task_id = uuid.uuid4().hex[:12]
-    task = TaskState(
+    _cleanup_tasks()
+    settings = LogSettings.from_env()
+    with TASKS_LOCK:
+        if len(TASKS) >= settings.task_max_count:
+            raise HTTPException(status_code=429, detail="当前任务数量已达到上限，请稍后再试")
+        task_id = uuid.uuid4().hex[:12]
+        task = TaskState(
+            task_id=task_id,
+            source_path=str(source),
+            output_path=str(output),
+            providers=provider_order,
+            proxy_url=_proxy_url_from_payload(payload.proxy),
+        )
+        TASKS[task_id] = task
+    RUNTIME_METRICS.task_started()
+    _log_service(
+        "INFO",
+        "task",
+        f"已创建任务: source={source} output={output}",
+        event="task.created",
         task_id=task_id,
-        source_path=str(source),
-        output_path=str(output),
-        providers=provider_order,
-        proxy_url=_proxy_url_from_payload(payload.proxy),
+        details={"sourcePath": str(source), "outputPath": str(output)},
     )
-    TASKS[task_id] = task
     threading.Thread(target=_run_task, args=(task,), daemon=True).start()
     return {"taskId": task_id}
 
 
 @app.get("/api/tasks/{task_id}")
 def api_task(task_id: str):
-    task = TASKS.get(task_id)
+    with TASKS_LOCK:
+        task = TASKS.get(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="任务不存在")
     return task.to_dict()
@@ -492,12 +776,28 @@ def api_task(task_id: str):
 
 @app.get("/emby-api/v1/health")
 def emby_health():
+    runtime = RUNTIME_METRICS.snapshot(extra=_runtime_snapshot())
     return {
         "status": "ok",
         "mode": "service",
         "defaultProxyConfigured": bool(EMBY_SERVICE.default_proxy.url),
         "providerCount": len(DEFAULT_SITES),
         "logCount": len(SERVICE_LOGS.recent()),
+        "uptimeSeconds": runtime["uptimeSeconds"],
+        "pid": runtime["pid"],
+        "memoryRssBytes": runtime["memoryRssBytes"],
+        "activeRequests": runtime["activeRequests"],
+        "taskCount": runtime["taskCount"],
+        "runningTaskCount": runtime["runningTaskCount"],
+        "metadataCacheEntries": runtime["metadataCacheEntries"],
+        "metadataCacheMaxEntries": runtime["metadataCacheMaxEntries"],
+        "metadataCacheTtlSeconds": runtime["metadataCacheTtlSeconds"],
+        "metadataCacheHits": runtime["metadataCacheHits"],
+        "metadataCacheMisses": runtime["metadataCacheMisses"],
+        "metadataCacheEvictions": runtime["metadataCacheEvictions"],
+        "lastRequestAt": runtime["lastRequestAt"],
+        "lastErrorAt": runtime["lastErrorAt"],
+        "logFileConfigured": get_runtime_log_writer().file_configured,
     }
 
 
@@ -549,8 +849,13 @@ def emby_movie_image(
 
     if image_type == "primary":
         if should_crop_poster_from_fanart(resolved_image.metadata.code):
-            client = HttpClient(timeout=20, proxy_url=effective_proxy.url)
-            selected = select_best_regular_poster_for_metadata(client, resolved_image.metadata)
+            client = HttpClient(proxy_url=effective_proxy.url, proxy_source="emby_image")
+            try:
+                selected = select_best_regular_poster_for_metadata(client, resolved_image.metadata)
+            finally:
+                close = getattr(client, "close", None)
+                if callable(close):
+                    close()
             if selected is not None:
                 if selected.mode == "regular_crop":
                     return Response(content=crop_to_poster(selected.image_bytes), media_type="image/jpeg")
@@ -596,6 +901,8 @@ def _launch_host() -> str:
 
 
 def launch() -> None:
+    configure_bootstrap_logging()
+    _log_service("INFO", "startup", "开始启动 HTTP 服务", event="application.starting")
     host = _launch_host()
     port = _launch_port()
     browser_host = "127.0.0.1" if host == "0.0.0.0" else host

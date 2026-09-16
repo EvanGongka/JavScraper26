@@ -9,9 +9,17 @@ from PIL import Image, ImageOps
 
 from javscraper.models import MovieMetadata
 from javscraper.network import HttpClient
+from javscraper.runtime_logging import LogSettings, redact_url
 
 POSTER_RATIO = 2.0 / 3.0
 POSTER_MIN_HEIGHT = 480
+
+
+class ImageTooLargeError(ValueError):
+    def __init__(self, size: int, limit: int) -> None:
+        super().__init__(f"图片大小 {size} 字节超过上限 {limit} 字节")
+        self.size = size
+        self.limit = limit
 
 
 @dataclass(frozen=True)
@@ -176,13 +184,65 @@ def image_candidates_present(metadata: MovieMetadata) -> bool:
 def download_image_bytes(client: HttpClient, url: str) -> tuple[bytes, str]:
     parsed = urlparse(url)
     referer = f"{parsed.scheme}://{parsed.netloc}/" if parsed.scheme and parsed.netloc else None
-    response = client.request(
-        "GET",
-        url,
-        headers={"referer": referer} if referer else None,
-        raise_for_status=True,
-    )
-    return response.content, response.headers.get("content-type", "image/jpeg")
+    try:
+        response = client.request(
+            "GET",
+            url,
+            headers={"referer": referer} if referer else None,
+            raise_for_status=True,
+            stream=True,
+        )
+    except TypeError as exc:
+        # Keep compatibility with lightweight test clients and older integrations.
+        if "stream" not in str(exc):
+            raise
+        response = client.request(
+            "GET",
+            url,
+            headers={"referer": referer} if referer else None,
+            raise_for_status=True,
+        )
+
+    limit = LogSettings.from_env().max_image_bytes
+    try:
+        headers = getattr(response, "headers", {}) or {}
+        content_length = headers.get("content-length")
+        if content_length:
+            try:
+                declared_size = int(content_length)
+            except (TypeError, ValueError):
+                declared_size = 0
+            if declared_size > limit:
+                raise ImageTooLargeError(declared_size, limit)
+
+        iter_content = getattr(response, "iter_content", None)
+        if callable(iter_content):
+            try:
+                chunks: list[bytes] = []
+                total = 0
+                for chunk in iter_content(chunk_size=64 * 1024):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > limit:
+                        raise ImageTooLargeError(total, limit)
+                    chunks.append(bytes(chunk))
+                image_bytes = b"".join(chunks)
+            except TypeError:
+                image_bytes = bytes(getattr(response, "content", b"") or b"")
+        else:
+            image_bytes = bytes(getattr(response, "content", b"") or b"")
+        if len(image_bytes) > limit:
+            raise ImageTooLargeError(len(image_bytes), limit)
+        media_type = headers.get("content-type", "image/jpeg")
+        return image_bytes, media_type
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                pass
 
 
 def image_size(image_bytes: bytes) -> tuple[int, int]:
@@ -224,9 +284,14 @@ def select_best_native_poster(
             image_bytes, media_type = download_image_bytes(client, normalized)
         except Exception as exc:
             if on_log and code:
-                on_log(f"[{code}] 原生 poster 候选下载失败: {normalized} ({exc})")
+                on_log(f"[{code}] 原生 poster 候选下载失败: {redact_url(normalized)} ({exc})")
             continue
-        width, height = image_size(image_bytes)
+        try:
+            width, height = image_size(image_bytes)
+        except Exception as exc:
+            if on_log and code:
+                on_log(f"[{code}] 原生 poster 候选图片损坏: {redact_url(normalized)} ({exc})")
+            continue
         if height <= width:
             continue
         selected = SelectedNativePoster(
@@ -281,9 +346,14 @@ def _select_landscape_crop_source(
             image_bytes, media_type = download_image_bytes(client, normalized)
         except Exception as exc:
             if on_log and code:
-                on_log(f"[{code}] {mode} 候选下载失败: {normalized} ({exc})")
+                on_log(f"[{code}] {mode} 候选下载失败: {redact_url(normalized)} ({exc})")
             continue
-        width, height = image_size(image_bytes)
+        try:
+            width, height = image_size(image_bytes)
+        except Exception as exc:
+            if on_log and code:
+                on_log(f"[{code}] {mode} 候选图片损坏: {redact_url(normalized)} ({exc})")
+            continue
         if width <= height:
             continue
         return SelectedRegularPoster(

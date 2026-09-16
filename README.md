@@ -377,6 +377,72 @@ mkdir -p docker-data/input docker-data/output
 docker compose up -d
 ```
 
+## Docker 故障排查
+
+### 查看容器日志
+
+```bash
+# 查看最近 500 行并持续跟踪
+docker compose logs --timestamps --tail=500 -f javscraper26
+
+# 直接查看容器当前状态
+docker inspect javscraper26 --format 'status={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}} finished={{.State.FinishedAt}} restarts={{.RestartCount}}'
+
+# 查看健康检查历史和失败原因
+docker inspect javscraper26 --format '{{json .State.Health}}'
+```
+
+启动正常时，日志中应能看到进程启动、服务就绪和每 60 秒一次的 `runtime.heartbeat`。`/emby-api/v1/health` 也会返回进程号、RSS 内存、活动请求、任务数量、缓存数量和最近错误时间。
+
+```bash
+curl http://127.0.0.1:8765/emby-api/v1/health
+curl http://127.0.0.1:8765/emby-api/v1/logs/recent
+docker stats --no-stream javscraper26
+docker events --since 24h --filter container=javscraper26
+```
+
+常见退出原因：
+
+- `oom=true` 或退出码 `137`：宿主机或容器发生内存不足。先检查 `docker stats` 和宿主机内存，再降低并发、缓存或图片大小上限。
+- 退出码 `143`：进程收到正常停止信号，检查宿主机面板、编排器或手动操作记录。
+- `Health` 为 `unhealthy`：只表示健康检查连续失败，Docker 本身不会因此停止容器；如果容器随后重启，继续检查面板策略和 `RestartCount`。
+- `State.Error` 有内容：通常是启动命令、端口、权限或镜像配置错误。进程启动前的导入异常也会写入 stdout 和持久化 JSONL 日志。
+- 没有最后一条关闭日志：可能是 `SIGKILL`、OOM 或宿主机断电，这类情况无法由应用在退出前写日志，应以 Docker 状态和最后一次心跳为准。
+
+### 读取持久化日志
+
+日志保存在 Compose named volume `javscraper26_logs` 中，容器重启后仍会保留。容器仍在运行时可以直接读取：
+
+```bash
+docker compose exec javscraper26 sh -c 'tail -n 200 /var/log/javscraper/javscraper.log'
+```
+
+应用日志按 `10 MB`、最多 `5` 个备份文件轮转；Docker stdout 也按 `10 MB`、最多 `5` 个文件轮转。不要使用 `docker compose down -v` 清理容器，否则会同时删除持久化日志卷。
+
+### 日志与稳定性配置
+
+以下变量可以写入 `.env`，或添加到 Compose 的 `environment` 中：
+
+| 变量 | 默认值 | 作用 |
+| --- | ---: | --- |
+| `JAVSCRAPER_LOG_LEVEL` | `INFO` | 日志级别，可设为 `DEBUG` |
+| `JAVSCRAPER_HEARTBEAT_INTERVAL` | `60` | 心跳间隔，单位秒 |
+| `JAVSCRAPER_SLOW_REQUEST_MS` | `3000` | 慢请求阈值，单位毫秒 |
+| `JAVSCRAPER_METADATA_CACHE_MAX_ENTRIES` | `512` | 元数据缓存最大条目数 |
+| `JAVSCRAPER_METADATA_CACHE_TTL_SECONDS` | `86400` | 元数据缓存有效期 |
+| `JAVSCRAPER_MAX_IMAGE_BYTES` | `26214400` | 单张图片最大字节数 |
+| `JAVSCRAPER_MAX_CONCURRENT_UPSTREAM` | `8` | 上游请求最大并发数 |
+| `JAVSCRAPER_HTTP_CONNECT_TIMEOUT` | `10` | HTTP 连接超时，单位秒 |
+| `JAVSCRAPER_HTTP_READ_TIMEOUT` | `30` | HTTP 读取超时，单位秒 |
+| `JAVSCRAPER_HTTP_RETRIES` | `2` | GET 请求失败重试次数 |
+| `JAVSCRAPER_TASK_RETENTION_SECONDS` | `3600` | 已完成任务保留时间 |
+| `JAVSCRAPER_TASK_MAX_COUNT` | `100` | 任务记录最大数量 |
+| `JAVSCRAPER_TASK_LOG_MAX_ENTRIES` | `400` | 单任务日志最大条数 |
+
+日志文件使用 JSONL 格式，每行包含时间、级别、事件、请求 ID、任务 ID、番号、站点、耗时、异常类型和结构化详情；密码、Cookie、Authorization、token、代理认证信息以及 URL 查询参数会自动隐藏。输入目录、输出目录和目标路径会保留，方便定位文件问题。
+
+本轮稳定性日志需要使用包含该功能的新镜像；旧的 `0.2.4` 镜像只包含当时版本的日志逻辑。Docker 首版仍只支持服务模式，不支持容器内普通 WebUI 的系统目录选择框，也不读取 Docker 中的 `JavDB` 浏览器登录态。
+
 ### Emby 插件编译
 
 ```bash
